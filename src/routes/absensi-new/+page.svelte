@@ -1,0 +1,1466 @@
+<script>
+	import { onMount } from 'svelte';
+	import { AbsensiService } from '$lib/services/absensi.js';
+	import { PengajianService, JamaahService, MasjidService, AlQuranService, HadistService, KelompokService } from '$lib/services/masterData.js';
+	import AppHeader from '$lib/components/AppHeader.svelte';
+	import BottomNav from '$lib/components/BottomNav.svelte';
+	import { Calendar, Users, Save, CheckCircle, XCircle, AlertCircle, Clock, MapPin, BookOpen, User, DollarSign, ChevronDown, Plus, List } from 'lucide-svelte';
+
+	let currentUser = null;
+	let pengajianList = [];
+	let jamaahList = [];
+	let masjidList = [];
+	let kelompokList = [];
+	let alquranList = [];
+	let hadistList = [];
+	let selectedDate = new Date().toISOString().split('T')[0];
+	let selectedPengajian = null;
+	let selectedMasjid = null;
+	let selectedKelompok = '';
+	let absensiData = {};
+	let isLoading = true;
+	let isSaving = false;
+	let message = { type: '', text: '', show: false };
+	let activeTab = 'form-pengajian'; // 'form-pengajian' or 'check-absensi'
+
+	// Additional form data for new structure
+	let formData = {
+		jam_mulai: '19:00',
+		jam_akhir: '20:30',
+		kelompok: '',
+		peserta: '',
+		tingkat: 1,
+		quran: null,
+		pengajar_quran: '',
+		ayat_awal: '',
+		ayat_akhir: '',
+		hadist: null,
+		pengajar_hadist: '',
+		hal_awal: '',
+		hal_akhir: '',
+		penasehat: '',
+		infaq: 0
+	};
+
+	let existingAbsensiId = null;
+	let innerWidth = 0;
+
+	$: isDesktop = innerWidth >= 768;
+	$: filteredJamaahLaki = jamaahList.filter(j => j.jk === 'L');
+	$: filteredJamaahPerempuan = jamaahList.filter(j => j.jk === 'P');
+	$: filteredJamaahByKelompok = selectedKelompok ?
+		jamaahList.filter(j => j.mkelompok?.id === selectedKelompok) :
+		jamaahList;
+	$: summaryStats = calculateSummary();
+
+	function calculateSummary() {
+		const total = Object.keys(absensiData).length;
+		const hadir = Object.values(absensiData).filter(status => status === 'H').length;
+		const sakit = Object.values(absensiData).filter(status => status === 'S').length;
+		const izin = Object.values(absensiData).filter(status => status === 'I').length;
+		const alpha = Object.values(absensiData).filter(status => status === 'A').length;
+
+		return { total, hadir, sakit, izin, alpha };
+	}
+
+	onMount(async () => {
+		await loadInitialData();
+		isLoading = false;
+	});
+
+	async function loadInitialData() {
+		try {
+			// Load pengajian list
+			pengajianList = await PengajianService.getAllPengajian();
+
+			// Load jamaah list
+			jamaahList = await JamaahService.getAllJamaah();
+
+			// Load masjid list
+			masjidList = await MasjidService.getAllMasjid();
+
+			// Load kelompok list
+			kelompokList = await KelompokService.getAllKelompok();
+
+			// Load Al-Quran list
+			alquranList = await AlQuranService.getAllAlQuran();
+
+			// Load Hadist list
+			hadistList = await HadistService.getAllHadist();
+
+			// Set default values
+			if (pengajianList.length > 0 && !selectedPengajian) {
+				selectedPengajian = pengajianList[0].id;
+			}
+			if (masjidList.length > 0 && !selectedMasjid) {
+				selectedMasjid = masjidList[0].id;
+			}
+
+			await loadAbsensiData();
+		} catch (error) {
+			console.error('Error loading initial data:', error);
+			showMessage('error', 'Gagal memuat data initial: ' + error.message);
+		}
+	}
+
+	async function loadAbsensiData() {
+		if (!selectedPengajian || !selectedDate) return;
+
+		try {
+			// Check if attendance session already exists for this date and pengajian
+			const existingAbsensi = await AbsensiService.getAbsensiByTanggalPengajian(selectedDate, selectedPengajian);
+
+			if (existingAbsensi) {
+				// Load existing session data
+				existingAbsensiId = existingAbsensi.id;
+
+				// Fill form with existing data
+				formData = {
+					jam_mulai: existingAbsensi.jam_mulai || '19:00',
+					jam_akhir: existingAbsensi.jam_akhir || '20:30',
+					kelompok: existingAbsensi.kelompok || '',
+					peserta: existingAbsensi.peserta || '',
+					tingkat: existingAbsensi.tingkat || 1,
+					quran: existingAbsensi.quran,
+					pengajar_quran: existingAbsensi.pengajar_quran || '',
+					ayat_awal: existingAbsensi.ayat_awal || '',
+					ayat_akhir: existingAbsensi.ayat_akhir || '',
+					hadist: existingAbsensi.hadist,
+					pengajar_hadist: existingAbsensi.pengajar_hadist || '',
+					hal_awal: existingAbsensi.hal_awal || '',
+					hal_akhir: existingAbsensi.hal_akhir || '',
+					penasehat: existingAbsensi.penasehat || '',
+					infaq: existingAbsensi.infaq || 0
+				};
+
+				selectedMasjid = existingAbsensi.tempat;
+
+				// Load individual attendance data
+				const detailAbsensi = await AbsensiService.getAbsensiDetail(existingAbsensiId);
+				const existingAttendance = {};
+				detailAbsensi.forEach(item => {
+					existingAttendance[item.id_siswa] = item.status;
+				});
+
+				// Initialize absensi data
+				absensiData = {};
+				jamaahList.forEach(jamaah => {
+					absensiData[jamaah.id] = existingAttendance[jamaah.id] || 'H';
+				});
+
+				showMessage('success', 'Data absensi yang sudah ada berhasil dimuat');
+			} else {
+				// Initialize with default values for new session
+				existingAbsensiId = null;
+				absensiData = {};
+				jamaahList.forEach(jamaah => {
+					absensiData[jamaah.id] = 'H'; // Default to 'Hadir'
+				});
+			}
+
+			// Trigger reactivity
+			absensiData = { ...absensiData };
+		} catch (error) {
+			console.error('Error loading absensi data:', error);
+			showMessage('error', 'Gagal memuat data absensi: ' + error.message);
+		}
+	}
+
+	function setAllStatus(status) {
+		jamaahList.forEach(jamaah => {
+			absensiData[jamaah.id] = status;
+		});
+		absensiData = { ...absensiData };
+	}
+
+	function getAbsensiCounts() {
+		const counts = { H: 0, A: 0, S: 0, I: 0 };
+		Object.values(absensiData).forEach(status => {
+			if (counts.hasOwnProperty(status)) {
+				counts[status]++;
+			}
+		});
+		return counts;
+	}
+
+	async function saveFormAndContinue() {
+		if (!selectedPengajian || !selectedDate || !selectedMasjid) {
+			showMessage('error', 'Lengkapi form pengajian terlebih dahulu');
+			return;
+		}
+
+		isSaving = true;
+		try {
+			let absensiId = existingAbsensiId;
+
+			// Create or update main absensi record
+			const absensiRecord = {
+				pengajian: selectedPengajian,
+				tgl: selectedDate,
+				tempat: selectedMasjid,
+				...formData
+			};
+
+			if (existingAbsensiId) {
+				// Update existing record
+				await AbsensiService.updateAbsensi(existingAbsensiId, absensiRecord);
+			} else {
+				// Create new record
+				const newAbsensi = await AbsensiService.createAbsensi(absensiRecord);
+				absensiId = newAbsensi.id;
+				existingAbsensiId = absensiId;
+			}
+
+			showMessage('success', 'Form pengajian berhasil disimpan. Silakan lanjut mengisi absensi jamaah.');
+
+			// Switch to check absensi tab
+			activeTab = 'check-absensi';
+
+		} catch (error) {
+			console.error('Error saving form:', error);
+			showMessage('error', 'Gagal menyimpan form: ' + (error instanceof Error ? error.message : 'Unknown error'));
+		} finally {
+			isSaving = false;
+		}
+	}
+
+	async function saveAbsensi() {
+		if (!selectedPengajian || !selectedDate || !selectedMasjid) {
+			showMessage('error', 'Pilih pengajian, tanggal, dan tempat terlebih dahulu');
+			return;
+		}
+
+		isSaving = true;
+		try {
+			let absensiId = existingAbsensiId;
+
+			// Create or update main absensi record
+			const absensiRecord = {
+				pengajian: selectedPengajian,
+				tgl: selectedDate,
+				tempat: selectedMasjid,
+				...formData
+			};
+
+			if (existingAbsensiId) {
+				// Update existing record
+				await AbsensiService.updateAbsensi(existingAbsensiId, absensiRecord);
+			} else {
+				// Create new record
+				const newAbsensi = await AbsensiService.createAbsensi(absensiRecord);
+				absensiId = newAbsensi.id;
+				existingAbsensiId = absensiId;
+			}
+
+			// Prepare detail attendance data
+			const jamaahAbsensi = jamaahList.map(jamaah => ({
+				jamaah_id: jamaah.id,
+				status: absensiData[jamaah.id] || 'H',
+				keterangan: null,
+				jam_datang: null
+			}));
+
+			// Save detail attendance
+			await AbsensiService.saveAbsensiDetail(absensiId, jamaahAbsensi);
+
+			const counts = getAbsensiCounts();
+			showMessage('success', `Absensi berhasil disimpan! Hadir: ${counts.H}, Absen: ${counts.A}, Sakit: ${counts.S}, Izin: ${counts.I}`);
+		} catch (error) {
+			console.error('Error saving absensi:', error);
+			showMessage('error', 'Gagal menyimpan absensi: ' + error.message);
+		} finally {
+			isSaving = false;
+		}
+	}
+
+	function handleDateChange() {
+		loadAbsensiData();
+	}
+
+	function handlePengajianChange() {
+		loadAbsensiData();
+	}
+
+	function showMessage(type, text) {
+		message = { type, text, show: true };
+		setTimeout(() => {
+			message.show = false;
+		}, 3000);
+	}
+
+	// Computed properties
+	$: selectedPengajianData = pengajianList.find(p => p.id === selectedPengajian);
+	$: selectedMasjidData = masjidList.find(m => m.id === selectedMasjid);
+	$: selectedQuranData = alquranList.find(q => q.id === formData.quran);
+	$: selectedHadistData = hadistList.find(h => h.id === formData.hadist);
+
+	function getStatusLabel(status) {
+		const statusMap = {
+			'H': 'Hadir',
+			'A': 'Absen',
+			'S': 'Sakit',
+			'I': 'Izin'
+		};
+		return statusMap[status] || status;
+	}
+
+	function getStatusClass(status) {
+		const classMap = {
+			'H': 'status-hadir',
+			'A': 'status-absen',
+			'S': 'status-sakit',
+			'I': 'status-izin'
+		};
+		return classMap[status] || '';
+	}
+
+	function formatDate(date) {
+		return new Date(date).toLocaleDateString('id-ID', {
+			weekday: 'long',
+			day: 'numeric',
+			month: 'long',
+			year: 'numeric'
+		});
+	}
+</script>
+
+<svelte:window bind:innerWidth />
+
+<AppHeader title="Input Absensi" showBack={true} />
+
+{#if message.show}
+	<div class="message {message.type}">
+		<AlertCircle size={16} />
+		<span>{message.text}</span>
+	</div>
+{/if}
+
+{#if isLoading}
+	<div class="loading-container">
+		<div class="loading-content">
+			<div class="spinner"></div>
+			<p class="loading-text">Memuat data absensi...</p>
+		</div>
+	</div>
+{:else}
+	<main class="app-content" class:desktop={isDesktop}>
+		<!-- Summary Statistics -->
+		<div class="summary-section" class:desktop={isDesktop}>
+			<div class="summary-header">
+				<Users size={20} />
+				<h3>Ringkasan Absensi</h3>
+				<span class="summary-date">{new Date(selectedDate).toLocaleDateString('id-ID')}</span>
+			</div>
+			<div class="summary-stats">
+				<div class="stat-item hadir">
+					<div class="stat-number">{summaryStats.hadir}</div>
+					<div class="stat-label">Hadir</div>
+				</div>
+				<div class="stat-item sakit">
+					<div class="stat-number">{summaryStats.sakit}</div>
+					<div class="stat-label">Sakit</div>
+				</div>
+				<div class="stat-item izin">
+					<div class="stat-number">{summaryStats.izin}</div>
+					<div class="stat-label">Izin</div>
+				</div>
+				<div class="stat-item alpha">
+					<div class="stat-number">{summaryStats.alpha}</div>
+					<div class="stat-label">Alpha</div>
+				</div>
+				<div class="stat-item total">
+					<div class="stat-number">{summaryStats.total}</div>
+					<div class="stat-label">Total</div>
+				</div>
+			</div>
+
+			<!-- Kelompok Filter -->
+			<div class="kelompok-filter">
+				<label for="kelompok-select">Filter Kelompok:</label>
+				<select id="kelompok-select" bind:value={selectedKelompok} class="kelompok-dropdown">
+					<option value="">Semua Kelompok</option>
+					{#each kelompokList as kelompok}
+						<option value={kelompok.id}>{kelompok.nama_kelompok}</option>
+					{/each}
+				</select>
+			</div>
+		</div>
+
+		<!-- Tab Navigation -->
+		<div class="tab-navigation" class:desktop={isDesktop}>
+			<button
+				class="tab-button"
+				class:active={activeTab === 'form-pengajian'}
+				on:click={() => activeTab = 'form-pengajian'}
+			>
+				<BookOpen size={18} />
+				<span>Form Pengajian</span>
+			</button>
+			<button
+				class="tab-button"
+				class:active={activeTab === 'check-absensi'}
+				on:click={() => activeTab = 'check-absensi'}
+			>
+				<List size={18} />
+				<span>Check Absensi Jamaah</span>
+			</button>
+		</div>
+
+		<!-- Tab Content -->
+		<div class="tab-content" class:desktop={isDesktop}>
+			{#if activeTab === 'form-pengajian'}
+				<!-- Form Pengajian Tab -->
+				<div class="form-pengajian-tab">
+					<!-- Session Configuration -->
+					<div class="session-config">
+						<div class="config-header">
+							<BookOpen size={20} />
+							<h2>Konfigurasi Sesi Pengajian</h2>
+						</div>
+
+			<div class="config-form">
+				<!-- Basic Info -->
+				<div class="form-row">
+					<div class="form-group">
+						<label>Tanggal</label>
+						<input
+							type="date"
+							bind:value={selectedDate}
+							on:change={handleDateChange}
+							class="form-input"
+						/>
+					</div>
+					<div class="form-group">
+						<label>Pengajian</label>
+						<select
+							bind:value={selectedPengajian}
+							on:change={handlePengajianChange}
+							class="form-input"
+						>
+							<option value="">Pilih Pengajian</option>
+							{#each pengajianList as pengajian}
+								<option value={pengajian.id}>{pengajian.nama_pengajian}</option>
+							{/each}
+						</select>
+					</div>
+				</div>
+
+				<div class="form-row">
+					<div class="form-group">
+						<label>Tempat (Masjid)</label>
+						<select bind:value={selectedMasjid} class="form-input">
+							<option value="">Pilih Masjid</option>
+							{#each masjidList as masjid}
+								<option value={masjid.id}>{masjid.nama_masjid}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="form-group">
+						<label>Tingkat</label>
+						<input
+							type="number"
+							bind:value={formData.tingkat}
+							min="1"
+							max="10"
+							class="form-input"
+						/>
+					</div>
+				</div>
+
+				<!-- Time & Participants -->
+				<div class="form-row">
+					<div class="form-group">
+						<label>Jam Mulai</label>
+						<input
+							type="time"
+							bind:value={formData.jam_mulai}
+							class="form-input"
+						/>
+					</div>
+					<div class="form-group">
+						<label>Jam Akhir</label>
+						<input
+							type="time"
+							bind:value={formData.jam_akhir}
+							class="form-input"
+						/>
+					</div>
+				</div>
+
+				<div class="form-row">
+					<div class="form-group">
+						<label>Kelompok</label>
+						<input
+							type="text"
+							bind:value={formData.kelompok}
+							placeholder="Nama kelompok"
+							class="form-input"
+						/>
+					</div>
+					<div class="form-group">
+						<label>Jumlah Peserta</label>
+						<input
+							type="text"
+							bind:value={formData.peserta}
+							placeholder="Contoh: 25 orang"
+							class="form-input"
+						/>
+					</div>
+				</div>
+
+				<!-- Quran Section -->
+				<div class="form-section">
+					<h3>Materi Al-Quran</h3>
+					<div class="form-row">
+						<div class="form-group">
+							<label>Surat</label>
+							<select bind:value={formData.quran} class="form-input">
+								<option value="">Pilih Surat</option>
+								{#each alquranList as surat}
+									<option value={surat.id}>{surat.nama_surat} (Juz {surat.juz})</option>
+								{/each}
+							</select>
+						</div>
+						<div class="form-group">
+							<label>Pengajar</label>
+							<input
+								type="text"
+								bind:value={formData.pengajar_quran}
+								placeholder="Nama pengajar Al-Quran"
+								class="form-input"
+							/>
+						</div>
+					</div>
+					<div class="form-row">
+						<div class="form-group">
+							<label>Ayat Awal</label>
+							<input
+								type="number"
+								bind:value={formData.ayat_awal}
+								min="1"
+								class="form-input"
+							/>
+						</div>
+						<div class="form-group">
+							<label>Ayat Akhir</label>
+							<input
+								type="number"
+								bind:value={formData.ayat_akhir}
+								min="1"
+								class="form-input"
+							/>
+						</div>
+					</div>
+				</div>
+
+				<!-- Hadist Section -->
+				<div class="form-section">
+					<h3>Materi Hadist</h3>
+					<div class="form-row">
+						<div class="form-group">
+							<label>Kitab Hadist</label>
+							<select bind:value={formData.hadist} class="form-input">
+								<option value="">Pilih Kitab Hadist</option>
+								{#each hadistList as hadist}
+									<option value={hadist.id}>{hadist.nama_hadist}</option>
+								{/each}
+							</select>
+						</div>
+						<div class="form-group">
+							<label>Pengajar</label>
+							<input
+								type="text"
+								bind:value={formData.pengajar_hadist}
+								placeholder="Nama pengajar Hadist"
+								class="form-input"
+							/>
+						</div>
+					</div>
+					<div class="form-row">
+						<div class="form-group">
+							<label>Halaman Awal</label>
+							<input
+								type="number"
+								bind:value={formData.hal_awal}
+								min="1"
+								class="form-input"
+							/>
+						</div>
+						<div class="form-group">
+							<label>Halaman Akhir</label>
+							<input
+								type="number"
+								bind:value={formData.hal_akhir}
+								min="1"
+								class="form-input"
+							/>
+						</div>
+					</div>
+				</div>
+
+				<!-- Additional Info -->
+				<div class="form-row">
+					<div class="form-group">
+						<label>Penasehat</label>
+						<input
+							type="text"
+							bind:value={formData.penasehat}
+							placeholder="Nama penasehat"
+							class="form-input"
+						/>
+					</div>
+					<div class="form-group">
+						<label>Infaq (Rp)</label>
+						<input
+							type="number"
+							bind:value={formData.infaq}
+							min="0"
+							class="form-input"
+						/>
+					</div>
+				</div>
+			</div>
+		</div>
+
+				<!-- Session Summary -->
+				{#if selectedPengajianData}
+					<div class="session-summary">
+						<div class="summary-header">
+							<Calendar size={20} />
+							<div class="summary-info">
+								<h3>{selectedPengajianData.nama_pengajian}</h3>
+								<p>{formatDate(selectedDate)}</p>
+								{#if selectedMasjidData}
+									<p class="location">
+										<MapPin size={14} />
+										{selectedMasjidData.nama_masjid}
+									</p>
+								{/if}
+							</div>
+						</div>
+					</div>
+				{/if}
+
+				<!-- Form Actions -->
+				<div class="form-actions">
+					<button
+						class="action-button primary"
+						on:click={saveFormAndContinue}
+						disabled={isSaving || !selectedPengajian || !selectedDate}
+					>
+						{#if isSaving}
+							<div class="save-spinner"></div>
+							Menyimpan...
+						{:else}
+							<Plus size={20} />
+							Simpan & Lanjut ke Absensi
+						{/if}
+					</button>
+				</div>
+				</div>
+			{:else if activeTab === 'check-absensi'}
+				<!-- Check Absensi Jamaah Tab -->
+				<div class="check-absensi-tab">
+					<!-- Quick Actions -->
+					<div class="quick-actions">
+						<h3>Aksi Cepat</h3>
+						<div class="action-buttons">
+							<button class="action-btn hadir" on:click={() => setAllStatus('H')}>
+								<CheckCircle size={16} />
+								Semua Hadir
+							</button>
+							<button class="action-btn absen" on:click={() => setAllStatus('A')}>
+								<XCircle size={16} />
+								Semua Alpha
+							</button>
+							<button class="action-btn sakit" on:click={() => setAllStatus('S')}>
+								<AlertCircle size={16} />
+								Semua Sakit
+							</button>
+							<button class="action-btn izin" on:click={() => setAllStatus('I')}>
+								<User size={16} />
+								Semua Izin
+							</button>
+						</div>
+					</div>
+
+					<!-- Jamaah Laki-laki -->
+					<div class="jamaah-section">
+						<div class="section-header">
+							<User size={20} />
+							<h3>Jamaah Laki-laki ({filteredJamaahLaki.length})</h3>
+						</div>
+						<div class="jamaah-grid">
+							{#each filteredJamaahLaki as jamaah}
+								{#if !selectedKelompok || jamaah.mkelompok?.id === selectedKelompok}
+									<div class="jamaah-card male">
+										<div class="jamaah-info">
+											<div class="jamaah-name">{jamaah.nama}</div>
+											<div class="jamaah-details">
+												<span class="kelompok">{jamaah.mkelompok?.nama_kelompok || '-'}</span>
+												<span class="kategori">{jamaah.mkategori?.category || '-'}</span>
+											</div>
+										</div>
+										<div class="status-buttons">
+											<button
+												class="status-btn {absensiData[jamaah.id] === 'H' ? 'active' : ''} hadir"
+												on:click={() => absensiData[jamaah.id] = 'H'}
+											>H</button>
+											<button
+												class="status-btn {absensiData[jamaah.id] === 'S' ? 'active' : ''} sakit"
+												on:click={() => absensiData[jamaah.id] = 'S'}
+											>S</button>
+											<button
+												class="status-btn {absensiData[jamaah.id] === 'I' ? 'active' : ''} izin"
+												on:click={() => absensiData[jamaah.id] = 'I'}
+											>I</button>
+											<button
+												class="status-btn {absensiData[jamaah.id] === 'A' ? 'active' : ''} alpha"
+												on:click={() => absensiData[jamaah.id] = 'A'}
+											>A</button>
+										</div>
+									</div>
+								{/if}
+							{/each}
+						</div>
+					</div>
+
+					<!-- Jamaah Perempuan -->
+					<div class="jamaah-section">
+						<div class="section-header">
+							<User size={20} />
+							<h3>Jamaah Perempuan ({filteredJamaahPerempuan.length})</h3>
+						</div>
+						<div class="jamaah-grid">
+							{#each filteredJamaahPerempuan as jamaah}
+								{#if !selectedKelompok || jamaah.mkelompok?.id === selectedKelompok}
+									<div class="jamaah-card female">
+										<div class="jamaah-info">
+											<div class="jamaah-name">{jamaah.nama}</div>
+											<div class="jamaah-details">
+												<span class="kelompok">{jamaah.mkelompok?.nama_kelompok || '-'}</span>
+												<span class="kategori">{jamaah.mkategori?.category || '-'}</span>
+											</div>
+										</div>
+										<div class="status-buttons">
+											<button
+												class="status-btn {absensiData[jamaah.id] === 'H' ? 'active' : ''} hadir"
+												on:click={() => absensiData[jamaah.id] = 'H'}
+											>H</button>
+											<button
+												class="status-btn {absensiData[jamaah.id] === 'S' ? 'active' : ''} sakit"
+												on:click={() => absensiData[jamaah.id] = 'S'}
+											>S</button>
+											<button
+												class="status-btn {absensiData[jamaah.id] === 'I' ? 'active' : ''} izin"
+												on:click={() => absensiData[jamaah.id] = 'I'}
+											>I</button>
+											<button
+												class="status-btn {absensiData[jamaah.id] === 'A' ? 'active' : ''} alpha"
+												on:click={() => absensiData[jamaah.id] = 'A'}
+											>A</button>
+										</div>
+									</div>
+								{/if}
+							{/each}
+						</div>
+					</div>
+				</div>
+			{/if}
+		</div>
+
+		<!-- Save Button -->
+		<div class="save-section">
+			<button
+				class="save-button"
+				on:click={saveAbsensi}
+				disabled={isSaving || !selectedPengajian || !selectedDate}
+			>
+				{#if isSaving}
+					<div class="save-spinner"></div>
+					Menyimpan...
+				{:else}
+					<Save size={20} />
+					Simpan Absensi
+				{/if}
+			</button>
+		</div>
+	</main>
+{/if}
+
+<BottomNav />
+
+<style>
+	.app-content {
+		min-height: calc(100vh - 64px);
+		background: #f8fafc;
+		padding: 1rem 1rem 100px 1rem;
+	}
+
+	.app-content.desktop {
+		padding: 1.5rem 2rem 2rem 2rem;
+		max-width: 1200px;
+		margin: 0 auto;
+	}
+
+	.message {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 1rem;
+		margin: 1rem;
+		border-radius: 8px;
+		font-size: 0.875rem;
+		font-weight: 500;
+		position: fixed;
+		top: 70px;
+		left: 1rem;
+		right: 1rem;
+		z-index: 30;
+	}
+
+	.message.success {
+		background: #dcfce7;
+		color: #166534;
+		border: 1px solid #bbf7d0;
+	}
+
+	.message.error {
+		background: #fef2f2;
+		color: #dc2626;
+		border: 1px solid #fecaca;
+	}
+
+	.message.info {
+		background: #dbeafe;
+		color: #1e40af;
+		border: 1px solid #93c5fd;
+	}
+
+	.loading-container {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 400px;
+		padding: 2rem;
+	}
+
+	.loading-content {
+		text-align: center;
+	}
+
+	.spinner {
+		width: 40px;
+		height: 40px;
+		border: 3px solid #e5e7eb;
+		border-top: 3px solid #0ea5e9;
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+		margin: 0 auto 1rem;
+	}
+
+	@keyframes spin {
+		0% { transform: rotate(0deg); }
+		100% { transform: rotate(360deg); }
+	}
+
+	.loading-text {
+		color: #6b7280;
+		font-size: 0.875rem;
+		margin: 0;
+	}
+
+	/* Summary Section */
+	.summary-section {
+		background: white;
+		border-radius: 12px;
+		padding: 1.5rem;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+		margin-bottom: 1.5rem;
+	}
+
+	.summary-section.desktop {
+		border-radius: 16px;
+		padding: 2rem;
+	}
+
+	.summary-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+		color: #1f2937;
+	}
+
+	.summary-header h3 {
+		font-size: 1.25rem;
+		font-weight: 600;
+		margin: 0;
+		flex: 1;
+	}
+
+	.summary-date {
+		font-size: 0.875rem;
+		color: #6b7280;
+		font-weight: 500;
+	}
+
+	.summary-stats {
+		display: grid;
+		grid-template-columns: repeat(5, 1fr);
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.stat-item {
+		text-align: center;
+		padding: 1rem;
+		border-radius: 8px;
+		background: #f8fafc;
+		border: 2px solid transparent;
+		transition: all 0.2s ease;
+	}
+
+	.stat-item.hadir {
+		background: #dcfce7;
+		border-color: #86efac;
+	}
+
+	.stat-item.sakit {
+		background: #fef3c7;
+		border-color: #fbbf24;
+	}
+
+	.stat-item.izin {
+		background: #dbeafe;
+		border-color: #60a5fa;
+	}
+
+	.stat-item.alpha {
+		background: #fecaca;
+		border-color: #f87171;
+	}
+
+	.stat-item.total {
+		background: #f3f4f6;
+		border-color: #9ca3af;
+	}
+
+	.stat-number {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: #1f2937;
+	}
+
+	.stat-label {
+		font-size: 0.75rem;
+		color: #6b7280;
+		font-weight: 500;
+		margin-top: 0.25rem;
+	}
+
+	.kelompok-filter {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.kelompok-filter label {
+		font-weight: 500;
+		color: #374151;
+		font-size: 0.875rem;
+	}
+
+	.kelompok-dropdown {
+		padding: 0.5rem 0.75rem;
+		border: 1px solid #d1d5db;
+		border-radius: 8px;
+		background: white;
+		color: #111827;
+		font-size: 0.875rem;
+		min-width: 200px;
+	}
+
+	/* Tab Navigation */
+	.tab-navigation {
+		display: flex;
+		background: white;
+		border-radius: 12px;
+		padding: 0.5rem;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+		margin-bottom: 1.5rem;
+	}
+
+	.tab-navigation.desktop {
+		border-radius: 16px;
+		padding: 0.75rem;
+	}
+
+	.tab-button {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		border: none;
+		background: transparent;
+		color: #6b7280;
+		font-weight: 500;
+		font-size: 0.875rem;
+		border-radius: 8px;
+		transition: all 0.2s ease;
+		cursor: pointer;
+	}
+
+	.tab-button:hover {
+		background: #f3f4f6;
+		color: #374151;
+	}
+
+	.tab-button.active {
+		background: #3b82f6;
+		color: white;
+		box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+	}
+
+	/* Tab Content */
+	.tab-content {
+		min-height: 400px;
+	}
+
+	/* Quick Actions */
+	.quick-actions {
+		background: white;
+		border-radius: 12px;
+		padding: 1.5rem;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+		margin-bottom: 1.5rem;
+	}
+
+	.quick-actions h3 {
+		margin: 0 0 1rem 0;
+		font-size: 1.125rem;
+		font-weight: 600;
+		color: #1f2937;
+	}
+
+	.action-buttons {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.action-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		border: none;
+		border-radius: 8px;
+		font-weight: 500;
+		font-size: 0.875rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.action-btn.hadir {
+		background: #dcfce7;
+		color: #166534;
+		border: 1px solid #86efac;
+	}
+
+	.action-btn.hadir:hover {
+		background: #bbf7d0;
+	}
+
+	.action-btn.absen {
+		background: #fecaca;
+		color: #dc2626;
+		border: 1px solid #f87171;
+	}
+
+	.action-btn.absen:hover {
+		background: #fca5a5;
+	}
+
+	.action-btn.sakit {
+		background: #fef3c7;
+		color: #d97706;
+		border: 1px solid #fbbf24;
+	}
+
+	.action-btn.sakit:hover {
+		background: #fde68a;
+	}
+
+	.action-btn.izin {
+		background: #dbeafe;
+		color: #2563eb;
+		border: 1px solid #60a5fa;
+	}
+
+	.action-btn.izin:hover {
+		background: #bfdbfe;
+	}
+
+	/* Jamaah Section */
+	.jamaah-section {
+		background: white;
+		border-radius: 12px;
+		padding: 1.5rem;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+		margin-bottom: 1.5rem;
+	}
+
+	.section-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+		color: #1f2937;
+	}
+
+	.section-header h3 {
+		font-size: 1.125rem;
+		font-weight: 600;
+		margin: 0;
+	}
+
+	.jamaah-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+		gap: 1rem;
+	}
+
+	.jamaah-card {
+		background: #f8fafc;
+		border-radius: 8px;
+		padding: 1rem;
+		border: 2px solid transparent;
+		transition: all 0.2s ease;
+	}
+
+	.jamaah-card.male {
+		border-left: 4px solid #3b82f6;
+	}
+
+	.jamaah-card.female {
+		border-left: 4px solid #ec4899;
+	}
+
+	.jamaah-card:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	}
+
+	.jamaah-info {
+		margin-bottom: 0.75rem;
+	}
+
+	.jamaah-name {
+		font-weight: 600;
+		color: #1f2937;
+		margin-bottom: 0.25rem;
+	}
+
+	.jamaah-details {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+	}
+
+	.jamaah-details span {
+		background: #e5e7eb;
+		color: #6b7280;
+		padding: 0.125rem 0.5rem;
+		border-radius: 4px;
+		font-weight: 500;
+	}
+
+	.status-buttons {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 0.5rem;
+	}
+
+	.status-btn {
+		padding: 0.5rem;
+		border: 1px solid #d1d5db;
+		border-radius: 6px;
+		background: white;
+		color: #6b7280;
+		font-weight: 600;
+		font-size: 0.875rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.status-btn:hover {
+		border-color: #9ca3af;
+	}
+
+	.status-btn.active.hadir {
+		background: #dcfce7;
+		color: #166534;
+		border-color: #86efac;
+	}
+
+	.status-btn.active.sakit {
+		background: #fef3c7;
+		color: #d97706;
+		border-color: #fbbf24;
+	}
+
+	.status-btn.active.izin {
+		background: #dbeafe;
+		color: #2563eb;
+		border-color: #60a5fa;
+	}
+
+	.status-btn.active.alpha {
+		background: #fecaca;
+		color: #dc2626;
+		border-color: #f87171;
+	}
+
+	/* Session Configuration */
+	.session-config {
+		background: white;
+		border-radius: 16px;
+		border: 1px solid #f1f5f9;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+		margin-bottom: 1.5rem;
+		overflow: hidden;
+	}
+
+	.config-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 1.5rem;
+		background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+		color: white;
+	}
+
+	.config-header h2 {
+		font-size: 1.125rem;
+		font-weight: 600;
+		margin: 0;
+	}
+
+	.config-form {
+		padding: 1.5rem;
+	}
+
+	.form-section {
+		margin-bottom: 2rem;
+		padding-bottom: 1.5rem;
+		border-bottom: 1px solid #f1f5f9;
+	}
+
+	.form-section:last-child {
+		margin-bottom: 0;
+		border-bottom: none;
+	}
+
+	.form-section h3 {
+		font-size: 1rem;
+		font-weight: 600;
+		color: #374151;
+		margin: 0 0 1rem 0;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.form-row {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.app-content.desktop .form-row {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.form-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.form-group label {
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: #374151;
+	}
+
+	.form-input {
+		padding: 0.75rem;
+		border: 1px solid #d1d5db;
+		border-radius: 8px;
+		font-size: 0.875rem;
+		color: #111827;
+		background: white;
+		transition: border-color 0.2s;
+	}
+
+	.form-input:focus {
+		outline: none;
+		border-color: #0ea5e9;
+		box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+	}
+
+	/* Session Summary */
+	.session-summary {
+		background: white;
+		border-radius: 16px;
+		border: 1px solid #f1f5f9;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+		margin-bottom: 1.5rem;
+		padding: 1.5rem;
+	}
+
+	.summary-header {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.summary-info h3 {
+		font-size: 1.125rem;
+		font-weight: 600;
+		color: #111827;
+		margin: 0 0 0.25rem 0;
+	}
+
+	.summary-info p {
+		font-size: 0.875rem;
+		color: #6b7280;
+		margin: 0;
+	}
+
+	.location {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		margin-top: 0.25rem !important;
+		color: #0ea5e9 !important;
+	}
+
+	/* Form Actions */
+	.form-actions {
+		margin-top: 1.5rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid #f3f4f6;
+	}
+
+	.action-button {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		padding: 1rem 1.5rem;
+		border: none;
+		border-radius: 12px;
+		font-weight: 600;
+		font-size: 1rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.action-button.primary {
+		background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+		color: white;
+		box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+	}
+
+	.action-button.primary:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+	}
+
+	.action-button:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+		transform: none;
+		box-shadow: none;
+	}
+
+	/* Save Section */
+	.save-section {
+		position: sticky;
+		bottom: 90px;
+		z-index: 20;
+	}
+
+	.save-button {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		padding: 1rem;
+		background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+		color: white;
+		border: none;
+		border-radius: 12px;
+		font-size: 1rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+	}
+
+	.save-button:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 20px rgba(14, 165, 233, 0.4);
+	}
+
+	.save-button:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+		transform: none;
+		box-shadow: none;
+	}
+
+	.save-spinner {
+		width: 20px;
+		height: 20px;
+		border: 2px solid rgba(255, 255, 255, 0.3);
+		border-top: 2px solid white;
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+	}
+
+	@media (max-width: 640px) {
+		.app-content {
+			padding: 1rem 1rem 120px 1rem;
+		}
+
+		.config-form {
+			padding: 1rem;
+		}
+
+		.form-row {
+			grid-template-columns: 1fr;
+		}
+
+		.summary-cards {
+			grid-template-columns: 1fr;
+		}
+
+		.action-buttons {
+			grid-template-columns: 1fr;
+		}
+
+		.jamaah-grid.desktop-layout {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

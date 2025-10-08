@@ -1,0 +1,310 @@
+/* Tailwind CSS */
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* Import Google Font */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+/* Import custom button styles */
+@import "./app-buttons.css";
+
+/* Custom base styles */
+@layer base {
+  html {
+    font-family: "Inter", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900;
+    /* Handle safe areas for mobile */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-100;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400;
+  }
+}
+
+/* Component styles */
+@layer components {
+  /* Mobile-first button styles */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-3
+		       rounded-xl font-medium text-sm transition-all duration-200
+		       focus:outline-none focus:ring-2 focus:ring-offset-2
+		       disabled:opacity-60 disabled:cursor-not-allowed
+		       active:scale-95 touch-manipulation;
+  }
+
+  .btn-primary {
+    @apply bg-primary-600 text-white hover:bg-primary-700
+		       focus:ring-primary-500 shadow-lg shadow-primary-500/25;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-gray-700 border border-gray-300
+		       hover:bg-gray-50 focus:ring-gray-500;
+  }
+
+  .btn-success {
+    @apply bg-green-600 text-white hover:bg-green-700
+		       focus:ring-green-500 shadow-lg shadow-green-500/25;
+  }
+
+  .btn-warning {
+    @apply bg-yellow-500 text-white hover:bg-yellow-600
+		       focus:ring-yellow-500 shadow-lg shadow-yellow-500/25;
+  }
+
+  .btn-error {
+    @apply bg-red-600 text-white hover:bg-red-700
+		       focus:ring-red-500 shadow-lg shadow-red-500/25;
+  }
+
+  .btn-sm {
+    @apply px-3 py-2 text-xs;
+  }
+
+  .btn-lg {
+    @apply px-6 py-4 text-base;
+  }
+
+  /* Card styles */
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-200/50;
+  }
+
+  .card-header {
+    @apply px-6 py-4 border-b border-gray-200/50;
+  }
+
+  .card-body {
+    @apply p-6;
+  }
+
+  .card-footer {
+    @apply px-6 py-4 border-t border-gray-200/50 bg-gray-50/50;
+  }
+
+  /* Form styles */
+  .form-input {
+    @apply w-full px-4 py-3 rounded-xl border border-gray-300
+		       focus:ring-2 focus:ring-primary-500 focus:border-primary-500
+		       transition-colors duration-200 text-base;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-2;
+  }
+
+  .form-select {
+    @apply w-full px-4 py-3 rounded-xl border border-gray-300
+		       focus:ring-2 focus:ring-primary-500 focus:border-primary-500
+		       transition-colors duration-200 text-base bg-white;
+  }
+
+  /* Badge styles */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-1
+		       rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .badge-warning {
+    @apply bg-yellow-100 text-yellow-700;
+  }
+
+  .badge-error {
+    @apply bg-red-100 text-red-700;
+  }
+
+  .badge-info {
+    @apply bg-blue-100 text-blue-700;
+  }
+
+  /* Status buttons for attendance */
+  .status-btn {
+    @apply flex-1 py-3 px-4 rounded-xl border-2 border-gray-200
+		       bg-white text-gray-600 font-medium text-sm
+		       transition-all duration-200 active:scale-95;
+  }
+
+  .status-btn.active {
+    @apply border-current text-white shadow-lg;
+  }
+
+  .status-btn-hadir {
+    @apply hover:border-green-300 hover:text-green-600;
+  }
+
+  .status-btn-hadir.active {
+    @apply bg-green-500 border-green-500;
+  }
+
+  .status-btn-absen {
+    @apply hover:border-red-300 hover:text-red-600;
+  }
+
+  .status-btn-absen.active {
+    @apply bg-red-500 border-red-500;
+  }
+
+  .status-btn-izin {
+    @apply hover:border-yellow-300 hover:text-yellow-600;
+  }
+
+  .status-btn-izin.active {
+    @apply bg-yellow-500 border-yellow-500;
+  }
+
+  /* Mobile app-like containers */
+  .app-container {
+    @apply bg-white min-h-screen relative;
+  }
+
+  .app-header {
+    @apply sticky top-0 z-40 bg-white/95 backdrop-blur-sm
+		       border-b border-gray-200/50;
+  }
+
+  .app-content {
+    @apply pb-20; /* Space for bottom navigation on mobile */
+  }
+
+  /* Desktop responsive content */
+  @media (min-width: 768px) {
+    .app-content {
+      @apply pb-6; /* Less bottom padding on desktop */
+    }
+  }
+
+  .bottom-nav {
+    @apply fixed bottom-0 left-1/2 transform -translate-x-1/2
+		       w-full bg-white/95 backdrop-blur-sm
+		       border-t border-gray-200/50 z-50;
+  }
+
+  /* Desktop bottom nav adjustments */
+  @media (min-width: 768px) {
+    .bottom-nav {
+      @apply max-w-md; /* Limit width on desktop */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .bottom-nav {
+      @apply max-w-sm rounded-t-2xl; /* Rounded corners on large screens */
+    }
+  }
+
+  /* Loading spinner */
+  .spinner {
+    @apply w-5 h-5 border-2 border-gray-200 border-t-current
+		       rounded-full animate-spin;
+  }
+
+  /* Safe area utilities */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Utilities */
+@layer utilities {
+  .text-shadow {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  .glass {
+    backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.8);
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  }
+
+  .gradient-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  }
+
+  .gradient-warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  }
+
+  .gradient-error {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  }
+}
+
+/* Mobile-specific optimizations */
+@media (max-width: 640px) {
+  .btn {
+    @apply py-4 text-base; /* Larger touch targets */
+  }
+
+  .form-input,
+  .form-select {
+    @apply py-4; /* Larger form inputs */
+  }
+}
+
+/* Tablet and Desktop optimizations */
+@media (min-width: 641px) {
+  .btn {
+    @apply py-3 text-sm; /* Standard desktop button size */
+  }
+
+  .form-input,
+  .form-select {
+    @apply py-3; /* Standard desktop input size */
+  }
+
+  /* Desktop grid layouts */
+  .desktop-grid-2 {
+    @apply grid grid-cols-2 gap-6;
+  }
+
+  .desktop-grid-3 {
+    @apply grid grid-cols-3 gap-6;
+  }
+
+  .desktop-grid-4 {
+    @apply grid grid-cols-4 gap-6;
+  }
+}
+
+/* Large desktop specific */
+@media (min-width: 1024px) {
+  .card {
+    @apply hover:shadow-md transition-shadow duration-200;
+  }
+
+  .btn {
+    @apply hover:shadow-lg transition-all duration-200;
+  }
+}

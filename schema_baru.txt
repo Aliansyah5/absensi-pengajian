@@ -1,0 +1,186 @@
+
+
+CREATE TABLE public.absensi (
+  id integer NOT NULL DEFAULT nextval('absensi_id_seq'::regclass),
+  pengajian integer,
+  tgl date,
+  tempat integer,
+  kelompok character varying,
+  peserta character varying,
+  tingkat integer,
+  jam_mulai time without time zone,
+  jam_akhir time without time zone,
+  quran integer,
+  pengajar_quran character varying,
+  ayat_awal integer,
+  ayat_akhir integer,
+  hadist integer,
+  pengajar_hadist character varying,
+  hal_awal integer,
+  hal_akhir integer,
+  penasehat character varying,
+  infaq numeric,
+  active integer DEFAULT 1,
+  user_modified character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT absensi_pkey PRIMARY KEY (id),
+  CONSTRAINT absensi_pengajian_fkey FOREIGN KEY (pengajian) REFERENCES public.mpengajian(id),
+  CONSTRAINT absensi_tempat_fkey FOREIGN KEY (tempat) REFERENCES public.mmasjid(id),
+  CONSTRAINT absensi_quran_fkey FOREIGN KEY (quran) REFERENCES public.malquran(id),
+  CONSTRAINT absensi_hadist_fkey FOREIGN KEY (hadist) REFERENCES public.mhadist(id)
+);
+CREATE TABLE public.dabsensi (
+  id integer NOT NULL,
+  idx integer NOT NULL DEFAULT nextval('dabsensi_idx_seq'::regclass),
+  id_siswa integer,
+  status character varying DEFAULT 'A'::character varying CHECK (status::text = ANY (ARRAY['A'::character varying, 'H'::character varying, 'S'::character varying, 'I'::character varying]::text[])),
+  keterangan text,
+  jam_datang time without time zone,
+  user_modified character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT dabsensi_pkey PRIMARY KEY (idx, id),
+  CONSTRAINT dabsensi_id_fkey FOREIGN KEY (id) REFERENCES public.absensi(id),
+  CONSTRAINT dabsensi_id_siswa_fkey FOREIGN KEY (id_siswa) REFERENCES public.mjamaah(id)
+);
+CREATE TABLE public.malquran (
+  id integer NOT NULL DEFAULT nextval('malquran_id_seq'::regclass),
+  nama_surat character varying,
+  juz integer,
+  jumlah_ayat integer,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  user_modified character varying NOT NULL,
+  active integer NOT NULL DEFAULT 1,
+  CONSTRAINT malquran_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.mdaerah (
+  id integer NOT NULL DEFAULT nextval('mdaerah_id_seq'::regclass),
+  nama_daerah character varying DEFAULT '50'::character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  active integer NOT NULL DEFAULT 1,
+  user_modified character varying DEFAULT '50'::character varying,
+  CONSTRAINT mdaerah_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.mdapukan (
+  id integer NOT NULL DEFAULT nextval('mdapukan_id_seq'::regclass),
+  nama_dapukan character varying,
+  deskripsi character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  active integer NOT NULL DEFAULT 1,
+  user_modified character varying,
+  CONSTRAINT mdapukan_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.mdesa (
+  id integer NOT NULL DEFAULT nextval('mdesa_id_seq'::regclass),
+  nama_desa character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  active integer NOT NULL DEFAULT 1,
+  user_modified character varying,
+  CONSTRAINT mdesa_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.mhadist (
+  id integer NOT NULL DEFAULT nextval('mhadist_id_seq'::regclass),
+  nama_hadist character varying,
+  jumlah_halaman integer,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  user_modified character varying,
+  active integer NOT NULL DEFAULT 1,
+  CONSTRAINT mhadist_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.mjamaah (
+  id integer NOT NULL DEFAULT nextval('mjamaah_id_seq'::regclass),
+  nama character varying NOT NULL,
+  tgl_lahir date,
+  jk character varying NOT NULL CHECK (jk::text = ANY (ARRAY['L'::character varying, 'P'::character varying]::text[])),
+  id_kategori integer,
+  alamat character varying,
+  email character varying DEFAULT '50'::character varying,
+  status_nikah character varying DEFAULT '''50''::character varying'::character varying,
+  telp_murid character varying,
+  id_kelompok integer NOT NULL,
+  pendidikan character varying DEFAULT '''50''::character varying'::character varying,
+  sekolah character varying,
+  jurusan character varying,
+  walimurid character varying,
+  telp_wali character varying,
+  alamat_wali character varying,
+  email_wali character varying,
+  id_dapukan integer,
+  active integer DEFAULT 1,
+  user_modified character varying DEFAULT '''50''::character varying'::character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT mjamaah_pkey PRIMARY KEY (id),
+  CONSTRAINT mjamaah_id_kategori_fkey FOREIGN KEY (id_kategori) REFERENCES public.mkategori(id),
+  CONSTRAINT mjamaah_id_kelompok_fkey FOREIGN KEY (id_kelompok) REFERENCES public.mkelompok(id),
+  CONSTRAINT mjamaah_id_dapukan_fkey FOREIGN KEY (id_dapukan) REFERENCES public.mdapukan(id)
+);
+CREATE TABLE public.mkategori (
+  id integer NOT NULL DEFAULT nextval('mkategori_id_seq'::regclass),
+  category character varying NOT NULL,
+  group character varying,
+  active integer NOT NULL DEFAULT 1,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  user_modified character varying NOT NULL,
+  CONSTRAINT mkategori_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.mkelompok (
+  id integer NOT NULL DEFAULT nextval('mkelompok_id_seq'::regclass),
+  nama_kelompok character varying,
+  id_desa integer,
+  id_daerah integer,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  active integer NOT NULL DEFAULT 1,
+  user_modified character varying,
+  CONSTRAINT mkelompok_pkey PRIMARY KEY (id),
+  CONSTRAINT mkelompok_id_desa_fkey FOREIGN KEY (id_desa) REFERENCES public.mdesa(id),
+  CONSTRAINT mkelompok_id_daerah_fkey FOREIGN KEY (id_daerah) REFERENCES public.mdaerah(id)
+);
+CREATE TABLE public.mmasjid (
+  id integer NOT NULL DEFAULT nextval('mmasjid_id_seq'::regclass),
+  nama_masjid character varying,
+  id_kelompok integer,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  active integer NOT NULL DEFAULT 1,
+  user_modified character varying,
+  CONSTRAINT mmasjid_pkey PRIMARY KEY (id),
+  CONSTRAINT mmasjid_id_kelompok_fkey FOREIGN KEY (id_kelompok) REFERENCES public.mkelompok(id)
+);
+CREATE TABLE public.mpengajian (
+  id integer NOT NULL DEFAULT nextval('mpengajian_id_seq'::regclass),
+  nama_pengajian character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  active integer NOT NULL DEFAULT 1,
+  user_modified character varying,
+  CONSTRAINT mpengajian_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.muser (
+  id integer NOT NULL DEFAULT nextval('muser_id_seq'::regclass),
+  email character varying NOT NULL UNIQUE,
+  full_name character varying,
+  role character varying NOT NULL DEFAULT 'user'::character varying,
+  active integer NOT NULL DEFAULT 1,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  user_modified character varying,
+  CONSTRAINT muser_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.user_roles (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid UNIQUE,
+  role character varying NOT NULL DEFAULT 'user'::character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_roles_pkey PRIMARY KEY (id),
+  CONSTRAINT user_roles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
