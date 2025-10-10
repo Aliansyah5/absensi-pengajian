@@ -849,17 +849,30 @@ export class JamaahService extends MasterDataService {
       .from("mjamaah")
       .select(
         `
-				*,
-				mkategori (category),
-				mkelompok (nama_kelompok, mdesa(nama_desa), mdaerah(nama_daerah)),
-				mdapukan (nama_dapukan)
-			`
+            *,
+            mkategori (category),
+            mkelompok (
+            nama_kelompok,
+            mdesa (nama_desa),
+            mdaerah (nama_daerah)
+            ),
+            mdapukan (nama_dapukan)
+        `
       )
-      .eq("active", 1)
-      .order("created_at", { ascending: false });
+      .eq("active", 1) // tanpa prefix tabel
+      .order("nama", { ascending: true }); // juga tanpa prefix
 
     // Apply filters
-    if (filters.kategori) query = query.eq("id_kategori", filters.kategori);
+    if (filters.kategori) {
+      // Support both single value and array for kategori filter
+      if (Array.isArray(filters.kategori)) {
+        // Multiple kategori - use WHERE IN
+        query = query.in("id_kategori", filters.kategori);
+      } else {
+        // Single kategori - use equality
+        query = query.eq("id_kategori", filters.kategori);
+      }
+    }
     if (filters.kelompok) query = query.eq("id_kelompok", filters.kelompok);
     if (filters.jk) query = query.eq("jk", filters.jk);
 
@@ -934,7 +947,7 @@ export class JamaahService extends MasterDataService {
       telp_wali: data.telp_wali,
       alamat_wali: data.alamat_wali,
       email_wali: data.email_wali,
-      id_dapukan: data.id_dapukan,
+      id_dapukan: data.id_dapukan || null,
     });
   }
 
@@ -956,7 +969,7 @@ export class JamaahService extends MasterDataService {
       telp_wali: data.telp_wali,
       alamat_wali: data.alamat_wali,
       email_wali: data.email_wali,
-      id_dapukan: data.id_dapukan,
+      id_dapukan: data.id_dapukan || null,
     });
   }
 

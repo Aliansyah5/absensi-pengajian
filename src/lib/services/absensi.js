@@ -77,6 +77,34 @@ export class AbsensiService {
   }
 
   /**
+   * Alias untuk getAbsensiById (untuk konsistensi API)
+   */
+  static async getById(id) {
+    return await this.getAbsensiById(id);
+  }
+
+  /**
+   * Mendapatkan data absensi lengkap dengan detail jamaah
+   */
+  static async getDetailWithJamaah(absensiId) {
+    try {
+      // Get absensi header
+      const absensi = await this.getAbsensiById(absensiId);
+
+      // Get detail jamaah
+      const detail = await this.getAbsensiDetail(absensiId);
+
+      return {
+        ...absensi,
+        detail_jamaah: detail,
+      };
+    } catch (error) {
+      console.error("Error getting absensi detail with jamaah:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Membuat sesi absensi baru
    */
   static async createAbsensi(absensiData) {
@@ -133,24 +161,65 @@ export class AbsensiService {
    * Menghapus sesi absensi (soft delete)
    */
   static async deleteAbsensi(id) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error("User tidak terautentikasi");
+    try {
+      // First try to get user from Supabase auth
+      const {
+        data: { user: supabaseUser },
+      } = await supabase.auth.getUser();
 
-    const { data, error } = await supabase
-      .from("absensi")
-      .update({
-        active: 0,
-        updated_at: new Date().toISOString(),
-        user_modified: user.email || "system",
-      })
-      .eq("id", id)
-      .select()
-      .single();
+      let currentUser = supabaseUser;
 
-    if (error) throw error;
-    return data;
+      // If no Supabase user, try to get from localStorage session (for our mock auth)
+      if (!currentUser && typeof window !== "undefined") {
+        // Try the auth store first
+        const authUser = localStorage.getItem("auth_user");
+        if (authUser) {
+          try {
+            const parsedAuthUser = JSON.parse(authUser);
+            currentUser = parsedAuthUser;
+          } catch (e) {
+            console.log("Error parsing auth_user:", e);
+          }
+        }
+
+        // Fallback to supabase session format
+        if (!currentUser) {
+          const session = localStorage.getItem("supabase.auth.session");
+          if (session) {
+            try {
+              const parsedSession = JSON.parse(session);
+              currentUser = parsedSession.user;
+            } catch (e) {
+              console.log("Error parsing session:", e);
+            }
+          }
+        }
+      }
+
+      // Get user email for logging
+      const userEmail =
+        currentUser?.email || currentUser?.profile?.email || "system";
+
+      //hapus dabsensi juga
+      await supabase.from("dabsensi").delete().eq("id", id);
+
+      const { data, error } = await supabase
+        .from("absensi")
+        .update({
+          active: 0,
+          updated_at: new Date().toISOString(),
+          user_modified: userEmail,
+        })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error("Error deleting absensi:", error);
+      throw error;
+    }
   }
 
   /**
@@ -355,6 +424,291 @@ export class AbsensiService {
 
     if (error) throw error;
     return data !== null;
+  }
+
+  /**
+   * Save complete absensi data with form and jamaah attendance
+   * @param {Object} params - Parameters object
+   * @param {Object} params.formData - Form data from PengajianForm
+   * @param {Array} params.jamaahAbsensi - Array of jamaah attendance data
+   * @param {string} params.tanggal - Date string
+   * @param {number} params.pengajianId - Selected pengajian ID
+   */
+  static async saveAbsensi({ formData, jamaahAbsensi, tanggal, pengajianId }) {
+    try {
+      // First try to get user from Supabase auth
+      const {
+        data: { user: supabaseUser },
+      } = await supabase.auth.getUser();
+
+      let currentUser = supabaseUser;
+
+      // If no Supabase user, try to get from localStorage session (for our mock auth)
+      if (!currentUser && typeof window !== "undefined") {
+        // Try the auth store first
+        const authUser = localStorage.getItem("auth_user");
+        if (authUser) {
+          try {
+            const parsedAuthUser = JSON.parse(authUser);
+            currentUser = parsedAuthUser;
+          } catch (e) {
+            console.log("Error parsing auth_user:", e);
+          }
+        }
+
+        // Fallback to supabase session format
+        if (!currentUser) {
+          const session = localStorage.getItem("supabase.auth.session");
+          if (session) {
+            try {
+              const parsedSession = JSON.parse(session);
+              currentUser = parsedSession.user;
+            } catch (e) {
+              console.log("Error parsing session:", e);
+            }
+          }
+        }
+      }
+
+      if (!currentUser) throw new Error("User tidak terautentikasi");
+
+      // Get user email for logging
+      const userEmail =
+        currentUser.email || currentUser.profile?.email || "system";
+
+      if (!jamaahAbsensi || jamaahAbsensi.length === 0) {
+        throw new Error("Tidak ada data absensi jamaah untuk disimpan");
+      }
+
+      if (!pengajianId) {
+        throw new Error("ID Pengajian tidak ditemukan");
+      }
+
+      // Use first tingkat from array for database storage (since DB expects single value)
+      // If multiple tingkat selected, store as comma-separated string (e.g., "1,2,3")
+      const tingkatValue =
+        formData.tingkat && formData.tingkat.length > 0
+          ? formData.tingkat.join(",")
+          : "1";
+
+      // Step 1: Create absensi header record
+      const absensiHeaderData = {
+        pengajian: pengajianId,
+        tgl: tanggal,
+        tempat: formData.tempat || null, // Store selected masjid
+        kelompok: formData.kelompok || "", // Store selected kelompok ID
+        peserta: jamaahAbsensi.length.toString(), // Auto-calculated from jamaah count
+        tingkat: tingkatValue, // Store as comma-separated string
+        jam_mulai: formData.jam_mulai || "19:00",
+        jam_akhir: formData.jam_akhir || "20:30",
+        quran: formData.quran || null,
+        pengajar_quran: formData.pengajar_quran || "",
+        ayat_awal: formData.ayat_awal ? parseInt(formData.ayat_awal) : null,
+        ayat_akhir: formData.ayat_akhir ? parseInt(formData.ayat_akhir) : null,
+        hadist: formData.hadist || null,
+        pengajar_hadist: formData.pengajar_hadist || "",
+        hal_awal: formData.hal_awal ? parseInt(formData.hal_awal) : null,
+        hal_akhir: formData.hal_akhir ? parseInt(formData.hal_akhir) : null,
+        penasehat: formData.penasehat || "",
+        infaq: formData.infaq ? parseFloat(formData.infaq) : 0,
+        active: 1,
+        user_modified: userEmail,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      // Insert absensi header
+      const { data: absensiHeader, error: headerError } = await supabase
+        .from("absensi")
+        .insert(absensiHeaderData)
+        .select()
+        .single();
+
+      if (headerError) {
+        console.error("Error creating absensi header:", headerError);
+        throw headerError;
+      }
+
+      // Step 2: Create dabsensi detail records
+      const now = new Date();
+      const jam_datang = now.toTimeString().slice(0, 5);
+      const detailRecords = jamaahAbsensi.map((item) => ({
+        id: absensiHeader.id, // Use the absensi header ID
+        id_siswa: item.jamaah_id,
+        jam_datang: jam_datang,
+        status: item.status_kehadiran,
+        keterangan: item.keterangan || "",
+        user_modified: userEmail,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+
+      // Insert detail records
+      const { data: detailData, error: detailError } = await supabase
+        .from("dabsensi")
+        .insert(detailRecords)
+        .select();
+
+      if (detailError) {
+        console.error("Error creating absensi details:", detailError);
+        // If detail insert fails, we should rollback the header
+        await supabase.from("absensi").delete().eq("id", absensiHeader.id);
+        throw detailError;
+      }
+
+      return {
+        header: absensiHeader,
+        details: detailData,
+      };
+    } catch (error) {
+      console.error("Error saving absensi:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update complete absensi data with form and jamaah attendance
+   * @param {Object} params - Parameters object
+   * @param {number} params.absensiId - ID of existing absensi to update
+   * @param {Object} params.formData - Form data from PengajianForm
+   * @param {Array} params.jamaahAbsensi - Array of jamaah attendance data
+   * @param {string} params.tanggal - Date string
+   * @param {number} params.pengajianId - Selected pengajian ID
+   */
+  static async updateAbsensiComplete({
+    absensiId,
+    formData,
+    jamaahAbsensi,
+    tanggal,
+    pengajianId,
+  }) {
+    try {
+      // First try to get user from Supabase auth
+      const {
+        data: { user: supabaseUser },
+      } = await supabase.auth.getUser();
+
+      let currentUser = supabaseUser;
+
+      // If no Supabase user, try to get from localStorage session (for our mock auth)
+      if (!currentUser && typeof window !== "undefined") {
+        const authUser = localStorage.getItem("auth_user");
+        if (authUser) {
+          try {
+            const parsedAuthUser = JSON.parse(authUser);
+            currentUser = parsedAuthUser;
+          } catch (e) {
+            console.log("Error parsing auth_user:", e);
+          }
+        }
+
+        if (!currentUser) {
+          const session = localStorage.getItem("supabase.auth.session");
+          if (session) {
+            try {
+              const parsedSession = JSON.parse(session);
+              currentUser = parsedSession.user;
+            } catch (e) {
+              console.log("Error parsing session:", e);
+            }
+          }
+        }
+      }
+
+      if (!currentUser) throw new Error("User tidak terautentikasi");
+
+      // Get user email for logging
+      const userEmail =
+        currentUser.email || currentUser.profile?.email || "system";
+
+      if (!jamaahAbsensi || jamaahAbsensi.length === 0) {
+        throw new Error("Tidak ada data absensi jamaah untuk disimpan");
+      }
+
+      if (!pengajianId) {
+        throw new Error("ID Pengajian tidak ditemukan");
+      }
+
+      // Use first tingkat from array for database storage (since DB expects single value)
+      // If multiple tingkat selected, store as comma-separated string (e.g., "1,2,3")
+      const tingkatValue =
+        formData.tingkat && formData.tingkat.length > 0
+          ? formData.tingkat.join(",")
+          : "1";
+
+      // Update absensi header
+      const updateHeaderData = {
+        pengajian: pengajianId,
+        tgl: tanggal,
+        tempat: formData.tempat || null, // Store selected masjid
+        kelompok: formData.kelompok || "", // Store selected kelompok ID
+        peserta: jamaahAbsensi.length.toString(), // Auto-calculated from jamaah count
+        tingkat: tingkatValue, // Store as comma-separated string
+        jam_mulai: formData.jam_mulai || "19:00",
+        jam_akhir: formData.jam_akhir || "20:30",
+        quran: formData.quran || null,
+        pengajar_quran: formData.pengajar_quran || "",
+        ayat_awal: formData.ayat_awal ? parseInt(formData.ayat_awal) : null,
+        ayat_akhir: formData.ayat_akhir ? parseInt(formData.ayat_akhir) : null,
+        hadist: formData.hadist || null,
+        pengajar_hadist: formData.pengajar_hadist || "",
+        hal_awal: formData.hal_awal ? parseInt(formData.hal_awal) : null,
+        hal_akhir: formData.hal_akhir ? parseInt(formData.hal_akhir) : null,
+        penasehat: formData.penasehat || "",
+        infaq: formData.infaq ? parseFloat(formData.infaq) : 0,
+        user_modified: userEmail,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Update absensi header
+      const { data: absensiHeader, error: headerError } = await supabase
+        .from("absensi")
+        .update(updateHeaderData)
+        .eq("id", absensiId)
+        .select()
+        .single();
+
+      if (headerError) {
+        console.error("Error updating absensi header:", headerError);
+        throw headerError;
+      }
+
+      // Delete existing detail records
+      await supabase.from("dabsensi").delete().eq("id", absensiId);
+
+      // Insert new detail records
+      const now = new Date();
+      const jam_datang = now.toTimeString().slice(0, 5);
+      const detailRecords = jamaahAbsensi.map((item) => ({
+        id: absensiId,
+        id_siswa: item.jamaah_id,
+        jam_datang: jam_datang,
+        status: item.status_kehadiran,
+        keterangan: item.keterangan || "",
+        user_modified: userEmail,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+
+      // Insert detail records
+      const { data: detailData, error: detailError } = await supabase
+        .from("dabsensi")
+        .insert(detailRecords)
+        .select();
+
+      if (detailError) {
+        console.error("Error updating absensi details:", detailError);
+        throw detailError;
+      }
+
+      return {
+        header: absensiHeader,
+        details: detailData,
+      };
+    } catch (error) {
+      console.error("Error updating absensi:", error);
+      throw error;
+    }
   }
 
   /**

@@ -22,16 +22,37 @@
 		if (onBack) {
 			onBack();
 		} else {
-			// Use proper navigation with fallback
+			// Smart navigation based on current location
 			try {
-				if (window.history.length > 1) {
+				const currentPath = window.location.pathname;
+                console.log('currentPath', currentPath, window.history.length > 1 && document.referrer);
+				// Check if browser has history and it's not the first page
+				if (window.history.length > 1 && document.referrer) {
+					// Use browser back if there's actual history
 					window.history.back();
 				} else {
-					// Fallback to dashboard if no history
-					window.location.href = '/dashboard';
+					// Intelligent fallback based on current path
+                    console.log('currentPath', currentPath);
+					if (currentPath.startsWith('/master/')) {
+						// If in master section, go to master index
+						window.location.href = '/master';
+					} else if (currentPath.startsWith('/absensi')) {
+						// If in absensi section, go to absensi list
+						window.location.href = '/absensi-new';
+					} else if (currentPath.startsWith('/jamaah')) {
+						// If in jamaah section, go to jamaah list
+						window.location.href = '/jamaah';
+					} else if (currentPath.startsWith('/laporan')) {
+						// If in laporan section, go to laporan index
+						window.location.href = '/laporan';
+					} else {
+						// Default fallback to dashboard
+						window.location.href = '/dashboard';
+					}
 				}
 			} catch (error) {
 				console.error('Navigation error:', error);
+				// Safe fallback to dashboard
 				window.location.href = '/dashboard';
 			}
 		}

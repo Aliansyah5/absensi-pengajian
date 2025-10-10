@@ -161,8 +161,8 @@ export class DatabaseService {
 				mkelompok(nama_kelompok, mmasjid(nama_masjid))
 			`
       )
-      .eq("is_active", true)
-      .order("nama_lengkap");
+      .eq("active", 1)
+      .order("nama");
 
     if (kategoriId) {
       query = query.eq("kategori_id", kategoriId);

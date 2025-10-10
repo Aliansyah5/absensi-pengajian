@@ -478,7 +478,7 @@
 									id={column.key}
 									bind:value={currentItem[column.key]}
 									disabled={modalMode === 'view'}
-									required={column.required !== false}
+									required={column.required === true}
 								>
 									<option value="">Pilih {column.label}</option>
 									{#each column.options as option}
@@ -490,7 +490,7 @@
 									id={column.key}
 									bind:value={currentItem[column.key]}
 									disabled={modalMode === 'view'}
-									required={column.required !== false}
+									required={column.required === true}
 								>
 									<option value="">Pilih {column.label}</option>
 									{#each foreignKeyOptions[column.foreignKey] as option}
@@ -502,7 +502,7 @@
 									id={column.key}
 									bind:value={currentItem[column.key]}
 									disabled={modalMode === 'view'}
-									required={column.required !== false}
+									required={column.required === true}
 									rows="3"
 								></textarea>
 							{:else}
@@ -511,7 +511,7 @@
 									id={column.key}
 									bind:value={currentItem[column.key]}
 									disabled={modalMode === 'view'}
-									required={column.required !== false}
+									required={column.required === true}
 								/>
 							{/if}
 						</div>

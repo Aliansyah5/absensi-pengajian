@@ -1414,7 +1414,7 @@
 								bind:value={formData.id_dapukan}
 								disabled={modalMode === 'view'}
 							>
-								<option value="">Pilih Dapukan</option>
+								<option value="0">Pilih Dapukan</option>
 								{#each dapukanOptionsForJamaah as dapukan}
 									<option value={dapukan.id}>{dapukan.nama_dapukan}</option>
 								{/each}

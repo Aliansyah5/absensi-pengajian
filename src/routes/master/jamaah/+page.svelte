@@ -16,13 +16,13 @@
 			{ value: '0', label: 'Belum Menikah' },
 			{ value: '1', label: 'Sudah Menikah' }
 		]},
-        	{ key: 'id_kategori', label: 'Kategori', foreignKey: 'kategori' },
+        	{ key: 'id_kategori', label: 'Kategori', foreignKey: 'kategori', required: true },
 		{ key: 'id_kelompok', label: 'Kelompok', foreignKey: 'kelompok', required: true },
 		{ key: 'id_dapukan', label: 'Dapukan', foreignKey: 'dapukan' },
 
 		// Contact Information
 		{ key: 'alamat', label: 'Alamat', type: 'textarea', section: 'Kontak & Alamat' },
-		{ key: 'email', label: 'Email', type: 'email' },
+		{ key: 'email', label: 'Email'  },
 		{ key: 'telp_murid', label: 'Telepon Murid' },
 
 		// Education Information
@@ -42,7 +42,7 @@
 		{ key: 'walimurid', label: 'Nama Wali', section: 'Data Wali' },
 		{ key: 'telp_wali', label: 'Telepon Wali' },
 		{ key: 'alamat_wali', label: 'Alamat Wali', type: 'textarea' },
-		{ key: 'email_wali', label: 'Email Wali', type: 'email' },
+		{ key: 'email_wali', label: 'Email Wali'  },
 
 
 	];
