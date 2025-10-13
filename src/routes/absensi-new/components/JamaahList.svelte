@@ -5,25 +5,35 @@
 	export let title;
 	export let jamaahList = [];
 	export let absensiData = {};
+	export let showSavingIndicator = true; // Allow parent to control saving indicator
 
 	const dispatch = createEventDispatcher();
 
 	let searchTerm = '';
+	let savingJamaahId = null;
 
 	$: filteredJamaah = jamaahList.filter(jamaah =>
 		jamaah.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
 		(jamaah.mkelompok?.nama_kelompok || '').toLowerCase().includes(searchTerm.toLowerCase())
 	);
 
-	function handleAbsensiChange(jamaahId, status) {
+	async function handleAbsensiChange(jamaahId, status) {
+		// Only show saving indicator if explicitly enabled
+		if (showSavingIndicator) {
+			savingJamaahId = jamaahId;
+		}
+
 		dispatch('absensiChange', {
 			jamaahId,
 			status,
 			keterangan: ''
 		});
-	}
 
-	function getStatusCount(status) {
+		// Reset saving state after a shorter delay since it's now silent
+		setTimeout(() => {
+			savingJamaahId = null;
+		}, 800);
+	}	function getStatusCount(status) {
 		return jamaahList.filter(jamaah =>
 			absensiData[jamaah.id]?.status_kehadiran === status
 		).length;
@@ -93,33 +103,40 @@
 						</div>
 
 						<div class="absensi-controls">
-							<button
-								class="status-btn hadir"
-								class:active={absensiData[jamaah.id]?.status_kehadiran === 'H'}
-								on:click={() => handleAbsensiChange(jamaah.id, 'H')}
-								title="Hadir"
-							>
-								<span class="status-letter">H</span>
-								<span class="status-label">Hadir</span>
-							</button>
-							<button
-								class="status-btn izin"
-								class:active={absensiData[jamaah.id]?.status_kehadiran === 'I'}
-								on:click={() => handleAbsensiChange(jamaah.id, 'I')}
-								title="Izin"
-							>
-								<span class="status-letter">I</span>
-								<span class="status-label">Izin</span>
-							</button>
-							<button
-								class="status-btn absen"
-								class:active={absensiData[jamaah.id]?.status_kehadiran === 'A'}
-								on:click={() => handleAbsensiChange(jamaah.id, 'A')}
-								title="Alpha"
-							>
-								<span class="status-letter">A</span>
-								<span class="status-label">Alpha</span>
-							</button>
+							{#if savingJamaahId === jamaah.id}
+								<div class="saving-indicator">
+									<div class="save-spinner-small"></div>
+									<span>Menyimpan...</span>
+								</div>
+							{:else}
+								<button
+									class="status-btn hadir"
+									class:active={absensiData[jamaah.id]?.status_kehadiran === 'H'}
+									on:click={() => handleAbsensiChange(jamaah.id, 'H')}
+									title="Hadir"
+								>
+									<span class="status-letter">H</span>
+									<span class="status-label">Hadir</span>
+								</button>
+								<button
+									class="status-btn izin"
+									class:active={absensiData[jamaah.id]?.status_kehadiran === 'I'}
+									on:click={() => handleAbsensiChange(jamaah.id, 'I')}
+									title="Izin"
+								>
+									<span class="status-letter">I</span>
+									<span class="status-label">Izin</span>
+								</button>
+								<button
+									class="status-btn absen"
+									class:active={absensiData[jamaah.id]?.status_kehadiran === 'A'}
+									on:click={() => handleAbsensiChange(jamaah.id, 'A')}
+									title="Alpha"
+								>
+									<span class="status-letter">A</span>
+									<span class="status-label">Alpha</span>
+								</button>
+							{/if}
 						</div>
 					</div>
 				{/each}
@@ -384,6 +401,35 @@
 		font-size: 0.75rem;
 		color: #6b7280;
 		text-align: center;
+	}
+
+	/* Saving Indicator */
+	.saving-indicator {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.5rem;
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+		border-radius: 8px;
+		color: #166534;
+		font-size: 0.75rem;
+		font-weight: 500;
+	}
+
+	.save-spinner-small {
+		width: 14px;
+		height: 14px;
+		border: 2px solid #bbf7d0;
+		border-top: 2px solid #10b981;
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		0% { transform: rotate(0deg); }
+		100% { transform: rotate(360deg); }
 	}
 
 	/* Responsive Design */

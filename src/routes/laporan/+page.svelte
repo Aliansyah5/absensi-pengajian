@@ -1,21 +1,39 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { auth } from '$lib/stores/auth.js';
 	import { goto } from '$app/navigation';
-	import { DatabaseService, formatters } from '$lib/utils/supabase.js';
+	import { AbsensiService } from '$lib/services/absensi.js';
+	import { PengajianService } from '$lib/services/masterData.js';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
-	import { BarChart3, Calendar, Download, Filter, TrendingUp, Users, Eye, FileText, Award, Clock } from 'lucide-svelte';
+	import { BarChart3, Calendar, Download, Filter, TrendingUp, Users, Eye, FileText, Award, Clock, PieChart, List, BookOpen } from 'lucide-svelte';
+	import Highcharts from 'highcharts';
 
 	let isLoading = true;
 	let innerWidth = 0;
-	let rekapData = [];
-	let kategoriList = [];
+	let activeTab = 'pengajian'; // 'pengajian' or 'absensi'
 	let selectedBulan = new Date().getMonth() + 1;
 	let selectedTahun = new Date().getFullYear();
-	let selectedKategori = '';
-	let filteredRekap = [];
-	let showFilters = false;
+
+	// Tab 1: Pengajian data
+	let pengajianStats = [];
+
+	// Tab 2: Absensi data
+	let absensiData = [];
+
+	// Color palette for charts
+	const colorPalette = [
+		'#10B981', // Emerald (Hadir)
+		'#EF4444', // Red (Absen)
+		'#F59E0B', // Amber (Izin)
+		'#8B5CF6', // Violet
+		'#06B6D4', // Cyan
+		'#F97316', // Orange
+		'#EC4899', // Pink
+		'#84CC16', // Lime
+		'#6366F1', // Indigo
+		'#14B8A6'  // Teal
+	];
 
 	$: isDesktop = innerWidth >= 768;
 
@@ -23,6 +41,17 @@
 		'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
 		'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 	];
+
+	// Reactive statement to create charts after pengajianStats updates and DOM is ready
+	$: if (pengajianStats.length > 0 && activeTab === 'pengajian') {
+		tick().then(() => {
+			setTimeout(() => {
+				pengajianStats.forEach((pengajian) => {
+					createPieChart(`chart-${pengajian.id}`, pengajian, '');
+				});
+			}, 100); // Small delay to ensure DOM is fully rendered
+		});
+	}
 
 	// Check authentication
 	onMount(async () => {
@@ -43,170 +72,326 @@
 	});
 
 	async function loadInitialData() {
-		try {
-			// Load kategori
-			const kategoriResult = await DatabaseService.getKategori();
-			if (kategoriResult.data) {
-				kategoriList = kategoriResult.data;
-			}
-
-			// Load rekap data
-			await loadRekapData();
-		} catch (error) {
-			console.error('Error loading initial data:', error);
-		} finally {
-			isLoading = false;
-		}
-	}
-
-	async function loadRekapData() {
 		isLoading = true;
 		try {
-			const result = await DatabaseService.getRekapAbsensiBulanan(
-				selectedBulan,
-				selectedTahun,
-				selectedKategori || null
-			);
-
-			if (result.data) {
-				rekapData = result.data;
-				filteredRekap = rekapData;
-			} else {
-				// Create mock data for demonstration
-				rekapData = createMockRekapData();
-				filteredRekap = rekapData;
-			}
+			await Promise.all([
+				loadPengajianStats(),
+				loadAbsensiData()
+			]);
 		} catch (error) {
-			console.error('Error loading rekap data:', error);
-			// Create mock data for demonstration
-			rekapData = createMockRekapData();
-			filteredRekap = rekapData;
+			console.error('Error loading data:', error);
 		} finally {
 			isLoading = false;
 		}
 	}
 
-	function createMockRekapData() {
-		// This is mock data for demonstration purposes
-		return [
-			{
-				jamaah_id: '1',
-				nomor_induk: 'J001',
-				nama_lengkap: 'Ahmad Fauzi',
-				nama_kategori: 'Putra',
-				nama_pengajian: 'Tahfidz Putra A',
-				total_hadir: 12,
-				total_absen: 2,
-				total_izin: 1,
-				total_pertemuan: 15,
-				persentase_kehadiran: 80.0
-			},
-			{
-				jamaah_id: '2',
-				nomor_induk: 'J002',
-				nama_lengkap: 'Fatimah Azzahra',
-				nama_kategori: 'Putri',
-				nama_pengajian: 'Tahfidz Putri A',
-				total_hadir: 14,
-				total_absen: 0,
-				total_izin: 1,
-				total_pertemuan: 15,
-				persentase_kehadiran: 93.3
-			},
-			{
-				jamaah_id: '3',
-				nomor_induk: 'J003',
-				nama_lengkap: 'Muhammad Rizki',
-				nama_kategori: 'Putra',
-				nama_pengajian: 'Tahfidz Putra A',
-				total_hadir: 10,
-				total_absen: 3,
-				total_izin: 2,
-				total_pertemuan: 15,
-				persentase_kehadiran: 66.7
-			},
-			{
-				jamaah_id: '4',
-				nomor_induk: 'J004',
-				nama_lengkap: 'Siti Aisyah',
-				nama_kategori: 'Putri',
-				nama_pengajian: 'Tahfidz Putri A',
-				total_hadir: 13,
-				total_absen: 1,
-				total_izin: 1,
-				total_pertemuan: 15,
-				persentase_kehadiran: 86.7
-			}
-		];
-	}
+	async function loadPengajianStats() {
+		try {
+			// Get all pengajian from master
+			const pengajianList = await PengajianService.getAllPengajian();
 
-	function handleFilterChange() {
-		loadRekapData();
-	}
+			// For each pengajian, calculate attendance stats for the month
+			const statsPromises = pengajianList.map(async (pengajian) => {
+				const startDate = new Date(selectedTahun, selectedBulan - 1, 1).toISOString().split('T')[0];
+				const endDate = new Date(selectedTahun, selectedBulan, 0).toISOString().split('T')[0];
 
-	function getKehadiranLevel(persentase) {
-		if (persentase >= 90) return { level: 'excellent', label: 'Sangat Baik', class: 'level-excellent' };
-		if (persentase >= 80) return { level: 'good', label: 'Baik', class: 'level-good' };
-		if (persentase >= 70) return { level: 'fair', label: 'Cukup', class: 'level-fair' };
-		return { level: 'poor', label: 'Kurang', class: 'level-poor' };
-	}
+				// Get absensi data for this pengajian in the selected month
+				const absensiList = await AbsensiService.getAllAbsensi(1, 100, {
+					pengajian: pengajian.id,
+					tanggal_mulai: startDate,
+					tanggal_akhir: endDate
+				});
 
-	function calculateSummaryStats() {
-		if (filteredRekap.length === 0) {
-			return {
-				totalJamaah: 0,
-				rataRataKehadiran: 0,
-				totalPertemuan: 0,
-				jamaahTerbaik: null
-			};
+				// Calculate stats
+				let totalHadir = 0;
+				let totalAbsen = 0;
+				let totalIzin = 0;
+				let totalSessions = absensiList.length;
+
+				for (const absensi of absensiList) {
+					const details = await AbsensiService.getAbsensiDetail(absensi.id);
+
+					totalHadir += details.filter(d => d.status === 'H').length;
+					totalAbsen += details.filter(d => d.status === 'A').length;
+					totalIzin += details.filter(d => d.status === 'I').length;
+				}
+
+				const total = totalHadir + totalAbsen + totalIzin;
+				const persentaseHadir = total > 0 ? (totalHadir / total * 100) : 0;
+
+				return {
+					id: pengajian.id,
+					nama_pengajian: pengajian.nama_pengajian,
+					total_hadir: totalHadir,
+					total_absen: totalAbsen,
+					total_izin: totalIzin,
+					total_sessions: totalSessions,
+					persentase_hadir: persentaseHadir
+				};
+			});
+
+			pengajianStats = await Promise.all(statsPromises);
+		} catch (error) {
+			console.error('Error loading pengajian stats:', error);
+			// Mock data for demo
+			pengajianStats = [
+				{
+					id: 1,
+					nama_pengajian: 'Tahfidz Putra A',
+					total_hadir: 120,
+					total_absen: 15,
+					total_izin: 8,
+					total_sessions: 12,
+					persentase_hadir: 83.9
+				},
+				{
+					id: 2,
+					nama_pengajian: 'Tahfidz Putri A',
+					total_hadir: 95,
+					total_absen: 12,
+					total_izin: 5,
+					total_sessions: 10,
+					persentase_hadir: 84.8
+				}
+			];
 		}
-
-		const totalJamaah = filteredRekap.length;
-		const rataRataKehadiran = filteredRekap.reduce((sum, item) => sum + (item.persentase_kehadiran || 0), 0) / totalJamaah;
-		const totalPertemuan = Math.max(...filteredRekap.map(item => item.total_pertemuan || 0));
-		const jamaahTerbaik = filteredRekap.reduce((best, current) =>
-			(current.persentase_kehadiran || 0) > (best?.persentase_kehadiran || 0) ? current : best
-		, null);
-
-		return {
-			totalJamaah,
-			rataRataKehadiran: rataRataKehadiran.toFixed(1),
-			totalPertemuan,
-			jamaahTerbaik
-		};
 	}
 
-	function exportData() {
-		// Simple CSV export functionality
-		const headers = ['No', 'Nomor Induk', 'Nama Lengkap', 'Kategori', 'Pengajian', 'Hadir', 'Absen', 'Izin', 'Total', 'Persentase'];
-		const rows = filteredRekap.map((item, index) => [
-			index + 1,
-			item.nomor_induk,
-			item.nama_lengkap,
-			item.nama_kategori,
-			item.nama_pengajian,
-			item.total_hadir,
-			item.total_absen,
-			item.total_izin,
-			item.total_pertemuan,
-			`${item.persentase_kehadiran}%`
-		]);
+	async function loadAbsensiData() {
+		try {
+			const startDate = new Date(selectedTahun, selectedBulan - 1, 1).toISOString().split('T')[0];
+			const endDate = new Date(selectedTahun, selectedBulan, 0).toISOString().split('T')[0];
 
-		const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
-		const blob = new Blob([csvContent], { type: 'text/csv' });
-		const url = window.URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `rekap-absensi-${bulanNames[selectedBulan - 1]}-${selectedTahun}.csv`;
-		a.click();
-		window.URL.revokeObjectURL(url);
+			// Get all absensi for the month
+			const absensiList = await AbsensiService.getAllAbsensi(1, 100, {
+				tanggal_mulai: startDate,
+				tanggal_akhir: endDate
+			});
+
+			// Calculate attendance percentage for each absensi
+			const dataPromises = absensiList.map(async (absensi) => {
+				const details = await AbsensiService.getAbsensiDetail(absensi.id);
+
+				const totalJamaah = details.length;
+				const hadirCount = details.filter(d => d.status === 'H').length;
+                const izinCount = details.filter(d => d.status === 'I').length;
+                const absenCount = details.filter(d => d.status === 'A').length;
+				const persentaseKehadiran = totalJamaah > 0 ? (hadirCount / totalJamaah * 100) : 0;
+
+				return {
+					...absensi,
+					total_jamaah: totalJamaah,
+					hadir_count: hadirCount,
+                    izin_count: izinCount,
+                    absen_count: absenCount,
+					persentase_kehadiran: persentaseKehadiran
+				};
+			});
+
+			absensiData = await Promise.all(dataPromises);
+		} catch (error) {
+			console.error('Error loading absensi data:', error);
+			// Mock data for demo with Al-Quran and Hadist info
+			absensiData = [
+				{
+					id: 1,
+					tgl: '2025-10-01',
+					mpengajian: { nama_pengajian: 'Tahfidz Putra A' },
+					mmasjid: { nama_masjid: 'Masjid Al-Ikhlas' },
+					malquran: { nama_alquran: 'Al-Fatihah' },
+					mhadist: { nama_hadist: 'Arba\'in Nawawi' },
+					total_jamaah: 15,
+					hadir_count: 13,
+					persentase_kehadiran: 86.7
+				},
+				{
+					id: 2,
+					tgl: '2025-10-05',
+					mpengajian: { nama_pengajian: 'Tahfidz Putri A' },
+					mmasjid: { nama_masjid: 'Masjid Al-Hidayah' },
+					malquran: { nama_alquran: 'Al-Baqarah' },
+					mhadist: { nama_hadist: 'Riyadhus Shalihin' },
+					total_jamaah: 12,
+					hadir_count: 11,
+					persentase_kehadiran: 91.7
+				}
+			];
+		}
+	}
+
+	function handlePeriodChange() {
+		loadInitialData();
+	}
+
+	async function handleTabChange(newTab) {
+		activeTab = newTab;
+		if (newTab === 'pengajian' && pengajianStats.length > 0) {
+			// Wait for DOM update then recreate charts
+			await tick();
+			setTimeout(() => {
+				pengajianStats.forEach((pengajian) => {
+					createPieChart(`chart-${pengajian.id}`, pengajian, '');
+				});
+			}, 100);
+		}
+	}
+
+	function handleAbsensiClick(absensiId) {
+		goto(`/absensi-new?edit=${absensiId}`);
 	}
 
 	function toggleFilters() {
-		showFilters = !showFilters;
+		// Function for search button click - can be used to toggle filter visibility
+		console.log('Toggle filters clicked');
 	}
 
-	$: summaryStats = calculateSummaryStats();
+	function formatDate(dateString) {
+		if (!dateString) return '-';
+		const date = new Date(dateString);
+		return date.toLocaleDateString('id-ID', {
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric'
+		});
+	}
+
+	function getAttendanceLevel(percentage) {
+		if (percentage >= 90) return { class: 'excellent', label: 'Sangat Baik' };
+		if (percentage >= 80) return { class: 'good', label: 'Baik' };
+		if (percentage >= 70) return { class: 'fair', label: 'Cukup' };
+		return { class: 'poor', label: 'Kurang' };
+	}
+
+	function createPieChart(containerId, data, title) {
+		// Debug log
+		console.log(`Attempting to create chart for container: ${containerId}`);
+
+		// Check if the container element exists in the DOM
+		const container = document.getElementById(containerId);
+		if (!container) {
+			console.error(`Chart container with id '${containerId}' not found`);
+			// Try to find the container after a short delay
+			setTimeout(() => {
+				const retryContainer = document.getElementById(containerId);
+				if (retryContainer) {
+					console.log(`Found container on retry: ${containerId}`);
+					createPieChart(containerId, data, title);
+				} else {
+					console.error(`Container '${containerId}' still not found after retry`);
+				}
+			}, 200);
+			return;
+		}
+
+		console.log(`Found container: ${containerId}`, container);
+
+		// Validate data
+		if (!data || typeof data.total_hadir === 'undefined' || typeof data.total_absen === 'undefined' || typeof data.total_izin === 'undefined') {
+			console.warn(`Invalid data for chart ${containerId}:`, data);
+			return;
+		}
+
+		// Destroy existing chart if it exists
+		if (container.chart) {
+			container.chart.destroy();
+		}
+
+		const chartData = [
+			{
+				name: 'Hadir',
+				y: data.total_hadir || 0,
+				color: '#10B981'
+			},
+			{
+				name: 'Absen',
+				y: data.total_absen || 0,
+				color: '#EF4444'
+			},
+			{
+				name: 'Izin',
+				y: data.total_izin || 0,
+				color: '#F59E0B'
+			}
+		];
+
+		// Check if there's any data to show
+		const hasData = chartData.some(item => item.y > 0);
+		if (!hasData) {
+			container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 200px; color: #6b7280; font-size: 14px;">Tidak ada data untuk ditampilkan</div>';
+			return;
+		}
+
+		try {
+			console.log(`Creating chart for ${containerId} with data:`, chartData);
+
+			const chart = Highcharts.chart(containerId, {
+				chart: {
+					type: 'pie',
+					backgroundColor: 'transparent',
+					height: 250,
+					marginTop: 20,
+					marginBottom: 20
+				},
+                credits: {
+                    enabled: false
+                },
+				title: {
+					text: title,
+					style: {
+						fontSize: '14px',
+						fontWeight: 'bold',
+						color: '#111827'
+					}
+				},
+				tooltip: {
+					pointFormat: '{series.name}: <b>{point.y}</b> ({point.percentage:.1f}%)'
+				},
+				accessibility: {
+					point: {
+						valueSuffix: '%'
+					}
+				},
+				plotOptions: {
+					pie: {
+						allowPointSelect: true,
+						cursor: 'pointer',
+						dataLabels: {
+							enabled: true,
+							format: '<b>{point.name}</b>: {point.y} ({point.percentage:.1f}%)',
+							style: {
+								fontSize: '11px'
+							}
+						},
+						showInLegend: true,
+						borderWidth: 2,
+						borderColor: '#ffffff',
+						center: ['50%', '50%'],
+						size: '80%'
+					}
+				},
+				legend: {
+					align: 'center',
+					verticalAlign: 'bottom',
+					layout: 'horizontal',
+					itemMarginTop: 10,
+					itemMarginBottom: 10
+				},
+				series: [{
+					name: 'Kehadiran',
+					colorByPoint: true,
+					data: chartData
+				}]
+			});
+
+			// Store chart reference on the container
+			container.chart = chart;
+			console.log(`Chart created successfully for ${containerId}`);
+		} catch (error) {
+			console.error(`Error creating chart for ${containerId}:`, error);
+			container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 200px; color: #ef4444; font-size: 14px;">Error loading chart</div>';
+		}
+	}
+
 	$: currentMonthYear = `${bulanNames[selectedBulan - 1]} ${selectedTahun}`;
 </script>
 
@@ -231,15 +416,14 @@
 			</div>
 		</div>
 	{:else}
-		<!-- Filter Section -->
-		<div class="filter-section" class:show={showFilters}>
+		<!-- Period Filter Section -->
+		<div class="period-filter">
 			<div class="filter-container">
 				<div class="filter-header">
-					<h3 class="filter-title">Filter Laporan</h3>
-					<span class="filter-subtitle">Pilih periode dan kategori</span>
+					<h3 class="filter-title">Periode Laporan</h3>
 				</div>
 
-				<div class="filter-grid" class:desktop-layout={isDesktop}>
+				<div class="filter-grid">
 					<div class="filter-group">
 						<label for="bulan" class="filter-label">
 							<Calendar size={16} />
@@ -248,7 +432,7 @@
 						<select
 							id="bulan"
 							bind:value={selectedBulan}
-							on:change={handleFilterChange}
+							on:change={handlePeriodChange}
 							class="filter-select"
 						>
 							{#each bulanNames as bulan, index}
@@ -265,29 +449,11 @@
 						<select
 							id="tahun"
 							bind:value={selectedTahun}
-							on:change={handleFilterChange}
+							on:change={handlePeriodChange}
 							class="filter-select"
 						>
-							{#each [2023, 2024, 2025, 2026] as tahun}
+							{#each [2023, 2024, 2025, 2026, 2027] as tahun}
 								<option value={tahun}>{tahun}</option>
-							{/each}
-						</select>
-					</div>
-
-					<div class="filter-group">
-						<label for="kategori" class="filter-label">
-							<Users size={16} />
-							Kategori
-						</label>
-						<select
-							id="kategori"
-							bind:value={selectedKategori}
-							on:change={handleFilterChange}
-							class="filter-select"
-						>
-							<option value="">Semua Kategori</option>
-							{#each kategoriList as kategori}
-								<option value={kategori.id}>{kategori.nama_kategori}</option>
 							{/each}
 						</select>
 					</div>
@@ -305,212 +471,168 @@
 						<span class="period-value">{currentMonthYear}</span>
 					</div>
 				</div>
-				<button
-					class="export-btn"
-					on:click={exportData}
-					disabled={filteredRekap.length === 0}
-				>
-					<Download size={16} />
-					Export
-				</button>
 			</div>
 		</div>
 
+		<!-- Tab Navigation -->
+		<div class="tab-navigation">
+			<button
+				class="tab-button"
+				class:active={activeTab === 'pengajian'}
+				on:click={() => handleTabChange('pengajian')}
+			>
+				<PieChart size={18} />
+				<span>Persentase Per Pengajian</span>
+			</button>
+			<button
+				class="tab-button"
+				class:active={activeTab === 'absensi'}
+				on:click={() => handleTabChange('absensi')}
+			>
+				<List size={18} />
+				<span>Data Absensi</span>
+			</button>
+		</div>
+
+		<!-- Tab Content -->
 		<div class="report-content">
-			<!-- Summary Statistics -->
-			<div class="summary-section">
-				<h3 class="section-title">Ringkasan {currentMonthYear}</h3>
-				<div class="summary-grid" class:desktop-layout={isDesktop}>
-					<div class="summary-card primary">
-						<div class="summary-icon">
-							<Users size={20} />
-						</div>
-						<div class="summary-info">
-							<div class="summary-number">{summaryStats.totalJamaah}</div>
-							<div class="summary-label">Total Jamaah</div>
-						</div>
-					</div>
+			{#if activeTab === 'pengajian'}
+				<!-- Tab 1: Pengajian Statistics -->
+				<div class="pengajian-stats-section">
 
-					<div class="summary-card success">
-						<div class="summary-icon">
-							<TrendingUp size={20} />
-						</div>
-						<div class="summary-info">
-							<div class="summary-number">{summaryStats.rataRataKehadiran}%</div>
-							<div class="summary-label">Rata-rata Kehadiran</div>
-						</div>
-					</div>
+					{#if pengajianStats.length > 0}
+						<div class="pengajian-grid">
+							{#each pengajianStats as pengajian, index}
+								<div class="pengajian-stat-card">
+									<div class="card-header">
+										<h4 class="pengajian-name">{pengajian.nama_pengajian}</h4>
+										<span class="session-count">{pengajian.total_sessions} sesi</span>
+									</div>
 
-					<div class="summary-card info">
-						<div class="summary-icon">
-							<Calendar size={20} />
-						</div>
-						<div class="summary-info">
-							<div class="summary-number">{summaryStats.totalPertemuan}</div>
-							<div class="summary-label">Total Pertemuan</div>
-						</div>
-					</div>
+									<!-- Highcharts Container -->
+									<div class="chart-container">
+										<div id="chart-{pengajian.id}" class="pie-chart-highcharts"></div>
+									</div>
 
-					{#if summaryStats.jamaahTerbaik}
-						<div class="summary-card warning">
-							<div class="summary-icon">
-								<Award size={20} />
-							</div>
-							<div class="summary-info">
-								<div class="summary-number">{summaryStats.jamaahTerbaik.persentase_kehadiran}%</div>
-								<div class="summary-label">Kehadiran Terbaik</div>
-								<div class="summary-extra">{summaryStats.jamaahTerbaik.nama_lengkap}</div>
-							</div>
+									<div class="stats-summary">
+										<div class="summary-stat">
+											<div class="stat-icon">
+												<Users size={16} />
+											</div>
+											<div class="stat-info">
+												<span class="stat-number">{pengajian.persentase_hadir.toFixed(1)}%</span>
+												<span class="stat-label">Kehadiran</span>
+											</div>
+										</div>
+
+										<div class="stats-breakdown">
+											<div class="breakdown-item">
+												<div class="indicator hadir"></div>
+												<span class="label">Hadir</span>
+												<span class="value">{pengajian.total_hadir}</span>
+											</div>
+											<div class="breakdown-item">
+												<div class="indicator absen"></div>
+												<span class="label">Absen</span>
+												<span class="value">{pengajian.total_absen}</span>
+											</div>
+											<div class="breakdown-item">
+												<div class="indicator izin"></div>
+												<span class="label">Izin</span>
+												<span class="value">{pengajian.total_izin}</span>
+											</div>
+										</div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<div class="empty-state">
+							<PieChart size={48} class="empty-icon" />
+							<h4 class="empty-title">Tidak ada data pengajian</h4>
+							<p class="empty-description">Belum ada data pengajian untuk periode {currentMonthYear}</p>
 						</div>
 					{/if}
-				</div>
-			</div>
+				</div>			{:else if activeTab === 'absensi'}
+				<!-- Tab 2: Absensi Data -->
+				<div class="absensi-data-section">
+					<h3 class="section-title">Data Absensi {currentMonthYear}</h3>
 
-			<!-- Detailed Report -->
-			<div class="report-section">
-				<div class="report-header">
-					<h3 class="section-title">
-						Detail Kehadiran
-						<span class="record-count">{filteredRekap.length} jamaah</span>
-					</h3>
-				</div>
-
-				{#if filteredRekap.length > 0}
-					<div class="report-list">
-						{#each filteredRekap as item, index}
-							{@const kehadiranLevel = getKehadiranLevel(item.persentase_kehadiran || 0)}
-							<div class="report-card" class:desktop-layout={isDesktop}>
-								<div class="report-header-info">
-									<div class="jamaah-avatar">
-										{item.nama_lengkap.charAt(0).toUpperCase()}
-									</div>
-									<div class="jamaah-basic">
-										<div class="jamaah-name">{item.nama_lengkap}</div>
-										<div class="jamaah-id">{item.nomor_induk}</div>
-									</div>
-									<div class="jamaah-kategori">
-										<span class="badge {item.nama_kategori === 'Putra' ? 'badge-info' : 'badge-warning'}">
-											{item.nama_kategori}
-										</span>
-									</div>
-								</div>
-
-								<div class="report-details">
-									<div class="pengajian-info">
-										<FileText size={14} class="info-icon" />
-										<span class="info-text">{item.nama_pengajian}</span>
-									</div>
-
-									<div class="attendance-stats" class:mobile-stack={!isDesktop}>
-										<div class="stat-item hadir">
-											<span class="stat-number">{item.total_hadir || 0}</span>
-											<span class="stat-label">Hadir</span>
+					{#if absensiData.length > 0}
+						<div class="absensi-grid">
+							{#each absensiData as absensi}
+								{@const level = getAttendanceLevel(absensi.persentase_kehadiran)}
+								<button
+									class="absensi-card"
+									on:click={() => handleAbsensiClick(absensi.id)}
+								>
+									<div class="absensi-header">
+										<div class="absensi-date">
+											<Calendar size={16} />
+											<span>{formatDate(absensi.tgl)}</span>
 										</div>
-										<div class="stat-item absen">
-											<span class="stat-number">{item.total_absen || 0}</span>
-											<span class="stat-label">Absen</span>
-										</div>
-										<div class="stat-item izin">
-											<span class="stat-number">{item.total_izin || 0}</span>
-											<span class="stat-label">Izin</span>
-										</div>
-										<div class="stat-item total">
-											<span class="stat-number">{item.total_pertemuan || 0}</span>
-											<span class="stat-label">Total</span>
+										<div class="attendance-badge {level.class}">
+											{absensi.persentase_kehadiran.toFixed(1)}%
 										</div>
 									</div>
-								</div>
 
-								<div class="report-footer">
-									<div class="attendance-percentage">
-										<span class="percentage-value {kehadiranLevel.class}">
-											{formatters.percentage(item.persentase_kehadiran || 0)}
-										</span>
+									<div class="absensi-info">
+										<h4 class="pengajian-title">{absensi.mpengajian?.nama_pengajian || 'Pengajian'}</h4>
+										<p class="masjid-name">{absensi.mmasjid?.nama_masjid || 'Masjid'}</p>
+
+										<!-- Al-Quran and Hadist Info -->
+										<div class="quran-hadist-info">
+											{#if absensi.malquran?.nama_surat}
+												<div class="info-item">
+													<BookOpen size={14} />
+													<span class="info-label">Al-Quran:</span>
+													<span class="info-value">{absensi.malquran.nama_surat}</span>
+												</div>
+											{/if}
+											{#if absensi.mhadist?.nama_hadist}
+												<div class="info-item">
+													<FileText size={14} />
+													<span class="info-label">Hadist:</span>
+													<span class="info-value">{absensi.mhadist.nama_hadist}</span>
+												</div>
+											{/if}
+										</div>
 									</div>
+
+									<div class="attendance-summary">
+										<div class="summary-item">
+											<span class="summary-label">Hadir:</span>
+											<span class="summary-value">{absensi.hadir_count}</span>
+										</div>
+                                        <div class="summary-item">
+											<span class="summary-label">Izin:</span>
+											<span class="summary-value">{absensi.hadir_count}</span>
+										</div>
+                                        <div class="summary-item">
+                                            <span class="summary-label">Absen:</span>
+                                            <span class="summary-value">{absensi.absen_count}</span>
+                                        </div>
+										<div class="summary-item">
+											<span class="summary-label">Total:</span>
+											<span class="summary-value">{absensi.total_jamaah}</span>
+										</div>
+									</div>
+
 									<div class="attendance-level">
-										<span class="level-badge {kehadiranLevel.class}">
-											{kehadiranLevel.label}
-										</span>
+										<span class="level-label {level.class}">{level.label}</span>
 									</div>
-								</div>
-							</div>
-						{/each}
-					</div>
-
-					<!-- Desktop Table View -->
-					{#if isDesktop}
-						<div class="table-section">
-							<div class="table-container">
-								<table class="report-table">
-									<thead>
-										<tr>
-											<th>No</th>
-											<th>Nomor Induk</th>
-											<th>Nama Lengkap</th>
-											<th>Kategori</th>
-											<th>Pengajian</th>
-											<th>Hadir</th>
-											<th>Absen</th>
-											<th>Izin</th>
-											<th>Total</th>
-											<th>Persentase</th>
-											<th>Level</th>
-										</tr>
-									</thead>
-									<tbody>
-										{#each filteredRekap as item, index}
-											{@const kehadiranLevel = getKehadiranLevel(item.persentase_kehadiran || 0)}
-											<tr>
-												<td>{index + 1}</td>
-												<td class="font-medium">{item.nomor_induk}</td>
-												<td class="font-medium">{item.nama_lengkap}</td>
-												<td>
-													<span class="badge {item.nama_kategori === 'Putra' ? 'badge-info' : 'badge-warning'}">
-														{item.nama_kategori}
-													</span>
-												</td>
-												<td>{item.nama_pengajian}</td>
-												<td class="text-center">
-													<span class="table-stat success">{item.total_hadir || 0}</span>
-												</td>
-												<td class="text-center">
-													<span class="table-stat error">{item.total_absen || 0}</span>
-												</td>
-												<td class="text-center">
-													<span class="table-stat warning">{item.total_izin || 0}</span>
-												</td>
-												<td class="text-center font-medium">{item.total_pertemuan || 0}</td>
-												<td class="text-center">
-													<span class="percentage-table {kehadiranLevel.class}">
-														{formatters.percentage(item.persentase_kehadiran || 0)}
-													</span>
-												</td>
-												<td class="text-center">
-													<span class="level-badge-table {kehadiranLevel.class}">
-														{kehadiranLevel.label}
-													</span>
-												</td>
-											</tr>
-										{/each}
-									</tbody>
-								</table>
-							</div>
+								</button>
+							{/each}
+						</div>
+					{:else}
+						<div class="empty-state">
+							<List size={48} class="empty-icon" />
+							<h4 class="empty-title">Tidak ada data absensi</h4>
+							<p class="empty-description">Belum ada data absensi untuk periode {currentMonthYear}</p>
 						</div>
 					{/if}
-				{:else}
-					<div class="empty-state">
-						<div class="empty-icon">
-							<BarChart3 size={64} />
-						</div>
-						<div class="empty-content">
-							<h3 class="empty-title">Tidak ada data untuk periode ini</h3>
-							<p class="empty-description">
-								Pilih bulan dan tahun yang berbeda atau pastikan sudah ada data absensi pada periode yang dipilih
-							</p>
-						</div>
-					</div>
-				{/if}
-			</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 </main>
@@ -560,47 +682,34 @@
 		margin: 0;
 	}
 
-	/* Filter Section */
-	.filter-section {
+	/* Period Filter Section */
+	.period-filter {
 		background: white;
 		border-bottom: 1px solid #f1f5f9;
-		max-height: 0;
-		overflow: hidden;
-		transition: max-height 0.3s ease;
-	}
-
-	.filter-section.show {
-		max-height: 300px;
+		padding: 1.5rem 1rem;
 	}
 
 	.filter-container {
-		padding: 1.5rem 1rem;
+		max-width: 600px;
+		margin: 0 auto;
 	}
 
 	.filter-header {
 		margin-bottom: 1.5rem;
+		text-align: center;
 	}
 
 	.filter-title {
-		font-size: 1rem;
+		font-size: 1.125rem;
 		font-weight: 600;
 		color: #111827;
-		margin: 0 0 0.25rem 0;
-	}
-
-	.filter-subtitle {
-		font-size: 0.875rem;
-		color: #6b7280;
+		margin: 0 0 0.5rem 0;
 	}
 
 	.filter-grid {
 		display: grid;
-		grid-template-columns: 1fr;
+		grid-template-columns: repeat(2, 1fr);
 		gap: 1rem;
-	}
-
-	.filter-grid.desktop-layout {
-		grid-template-columns: repeat(3, 1fr);
 	}
 
 	.filter-group {
@@ -643,7 +752,7 @@
 	.period-content {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: center;
 		gap: 1rem;
 	}
 
@@ -673,28 +782,38 @@
 		font-weight: 600;
 	}
 
-	.export-btn {
+	/* Tab Navigation */
+	.tab-navigation {
+		display: flex;
+		background: white;
+		border-bottom: 1px solid #f1f5f9;
+	}
+
+	.tab-button {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		padding: 0.5rem 1rem;
-		background: rgba(255, 255, 255, 0.2);
-		border: 1px solid rgba(255, 255, 255, 0.3);
-		border-radius: 8px;
-		color: white;
+		flex: 1;
+		padding: 1rem 1.5rem;
+		border: none;
+		background: transparent;
 		font-size: 0.875rem;
 		font-weight: 500;
+		color: #6b7280;
 		cursor: pointer;
 		transition: all 0.2s ease;
+		border-bottom: 2px solid transparent;
 	}
 
-	.export-btn:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.3);
+	.tab-button:hover {
+		background: #f9fafb;
+		color: #374151;
 	}
 
-	.export-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
+	.tab-button.active {
+		color: #0ea5e9;
+		border-bottom-color: #0ea5e9;
+		background: #f0f9ff;
 	}
 
 	/* Report Content */
@@ -706,431 +825,343 @@
 		font-size: 1.125rem;
 		font-weight: 600;
 		color: #111827;
-		margin: 0 0 1rem 0;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
+		margin: 0 0 1.5rem 0;
 	}
 
-	.record-count {
-		background: #e0f2fe;
-		color: #0369a1;
-		padding: 0.25rem 0.75rem;
-		border-radius: 9999px;
-		font-size: 0.75rem;
-		font-weight: 500;
-	}
-
-	/* Summary Section */
-	.summary-section {
-		margin-bottom: 2rem;
-	}
-
-	.summary-grid {
+	/* Pengajian Stats Section */
+	.pengajian-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
+		grid-template-columns: 1fr;
+		gap: 1.5rem;
 	}
 
-	.summary-grid.desktop-layout {
-		grid-template-columns: repeat(4, 1fr);
+	@media (min-width: 768px) {
+		.pengajian-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
 	}
 
-	.summary-card {
+	@media (min-width: 1024px) {
+		.pengajian-grid {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+
+	.pengajian-stat-card {
 		background: white;
-		border-radius: 12px;
-		padding: 1.25rem;
+		border-radius: 16px;
+		padding: 1.5rem;
 		border: 1px solid #f1f5f9;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-		display: flex;
-		align-items: center;
-		gap: 1rem;
 		transition: all 0.2s ease;
 	}
 
-	.summary-card:hover {
+	.pengajian-stat-card:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
 	}
 
-	.summary-icon {
-		width: 44px;
-		height: 44px;
+	.card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		margin-bottom: 1.5rem;
+	}
+
+	.pengajian-name {
+		font-size: 1rem;
+		font-weight: 600;
+		color: #111827;
+		margin: 0;
+		flex: 1;
+		line-height: 1.3;
+	}
+
+	.session-count {
+		font-size: 0.75rem;
+		color: #6b7280;
+		background: #f3f4f6;
+		padding: 0.25rem 0.75rem;
+		border-radius: 12px;
+		white-space: nowrap;
+	}
+
+	/* Highcharts Container */
+	.chart-container {
+		margin: 2rem 0;
+		height: 250px;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.pie-chart-highcharts {
+		width: 100%;
+		height: 250px;
+	}
+
+	/* Stats Summary */
+	.stats-summary {
+		border-top: 1px solid #f3f4f6;
+		padding-top: 1.5rem;
+	}
+
+	.summary-stat {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 1rem;
+		padding: 1rem;
+		background: #f9fafb;
+		border-radius: 12px;
+	}
+
+	.stat-icon {
+		background: #0ea5e9;
+		color: white;
+		width: 40px;
+		height: 40px;
 		border-radius: 10px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: white;
-		flex-shrink: 0;
 	}
 
-	.summary-card.primary .summary-icon {
-		background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
-	}
-
-	.summary-card.success .summary-icon {
-		background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-	}
-
-	.summary-card.info .summary-icon {
-		background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-	}
-
-	.summary-card.warning .summary-icon {
-		background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-	}
-
-	.summary-info {
-		text-align: center;
+	.stat-info {
 		flex: 1;
 	}
 
-	.summary-number {
-		font-size: 1.25rem;
+	.stat-number {
+		display: block;
+		font-size: 1.5rem;
 		font-weight: 700;
 		color: #111827;
 		line-height: 1;
 	}
 
-	.summary-label {
-		font-size: 0.75rem;
+	.stat-label {
 		color: #6b7280;
+		font-size: 0.875rem;
 		font-weight: 500;
-		margin-top: 0.25rem;
 	}
 
-	.summary-extra {
-		font-size: 0.6875rem;
-		color: #9ca3af;
-		margin-top: 0.125rem;
-	}
-
-	/* Report Section */
-	.report-section {
-		margin-bottom: 2rem;
-	}
-
-	.report-list {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 1rem;
-		margin-bottom: 2rem;
-	}
-
-	.report-card {
-		background: white;
-		border-radius: 12px;
-		padding: 1.25rem;
-		border: 1px solid #f1f5f9;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-		transition: all 0.2s ease;
-	}
-
-	.report-card:hover {
-		transform: translateY(-1px);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-	}
-
-	.report-header-info {
+	.stats-breakdown {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 1rem;
-	}
-
-	.jamaah-avatar {
-		width: 40px;
-		height: 40px;
-		border-radius: 8px;
-		background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
-		color: white;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-weight: 600;
-		font-size: 1rem;
-		margin-right: 0.75rem;
-	}
-
-	.jamaah-basic {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.jamaah-name {
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: #111827;
-		margin-bottom: 0.125rem;
-	}
-
-	.jamaah-id {
-		font-size: 0.75rem;
-		color: #6b7280;
-	}
-
-	.report-details {
-		margin-bottom: 1rem;
-	}
-
-	.pengajian-info {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
-		font-size: 0.875rem;
-		color: #6b7280;
-	}
-
-	.info-icon {
-		color: #9ca3af;
-		flex-shrink: 0;
-	}
-
-	.info-text {
-		flex: 1;
-	}
-
-	.attendance-stats {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		flex-direction: column;
 		gap: 0.75rem;
 	}
 
-	.attendance-stats.mobile-stack {
-		grid-template-columns: repeat(2, 1fr);
-	}
-
-	.stat-item {
-		text-align: center;
-		padding: 0.75rem;
-		border-radius: 8px;
-		border: 1px solid #f1f5f9;
-	}
-
-	.stat-item.hadir {
-		background: #f0fdf4;
-		border-color: #bbf7d0;
-	}
-
-	.stat-item.absen {
-		background: #fef2f2;
-		border-color: #fecaca;
-	}
-
-	.stat-item.izin {
-		background: #fffbeb;
-		border-color: #fed7aa;
-	}
-
-	.stat-item.total {
-		background: #f0f9ff;
-		border-color: #bae6fd;
-	}
-
-	.stat-number {
-		font-size: 1rem;
-		font-weight: 700;
-		margin-bottom: 0.25rem;
-		display: block;
-	}
-
-	.stat-item.hadir .stat-number {
-		color: #16a34a;
-	}
-
-	.stat-item.absen .stat-number {
-		color: #dc2626;
-	}
-
-	.stat-item.izin .stat-number {
-		color: #ea580c;
-	}
-
-	.stat-item.total .stat-number {
-		color: #0369a1;
-	}
-
-	.stat-label {
-		font-size: 0.75rem;
-		color: #6b7280;
-		font-weight: 500;
-	}
-
-	.report-footer {
+	.breakdown-item {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		padding-top: 1rem;
-		border-top: 1px solid #f8fafc;
+		gap: 0.75rem;
 	}
 
-	.attendance-percentage {
+	.indicator {
+		width: 12px;
+		height: 12px;
+		border-radius: 2px;
+		flex-shrink: 0;
+	}
+
+	.indicator.hadir {
+		background: #10b981;
+	}
+
+	.indicator.absen {
+		background: #ef4444;
+	}
+
+	.indicator.izin {
+		background: #f59e0b;
+	}
+
+	.breakdown-item .label {
+		font-size: 0.875rem;
+		color: #6b7280;
 		flex: 1;
 	}
 
-	.percentage-value {
-		font-size: 1.125rem;
-		font-weight: 700;
-		padding: 0.5rem 1rem;
-		border-radius: 8px;
+	.breakdown-item .value {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #111827;
 	}
 
-	.percentage-value.level-excellent {
+	/* Absensi Data Section */
+	.absensi-grid {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 1rem;
+	}
+
+	@media (min-width: 768px) {
+		.absensi-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.absensi-grid {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+
+	.absensi-card {
+		background: white;
+		border: 1px solid #f1f5f9;
+		border-radius: 12px;
+		padding: 1.25rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		text-align: left;
+		width: 100%;
+	}
+
+	.absensi-card:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+		border-color: #e2e8f0;
+	}
+
+	.absensi-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+
+	.absensi-date {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.875rem;
+		color: #6b7280;
+	}
+
+	.attendance-badge {
+		padding: 0.375rem 0.75rem;
+		border-radius: 8px;
+		font-size: 0.875rem;
+		font-weight: 600;
+	}
+
+	.attendance-badge.excellent {
 		background: #dcfce7;
 		color: #16a34a;
 	}
 
-	.percentage-value.level-good {
+	.attendance-badge.good {
 		background: #dbeafe;
 		color: #2563eb;
 	}
 
-	.percentage-value.level-fair {
+	.attendance-badge.fair {
 		background: #fef3c7;
 		color: #d97706;
 	}
 
-	.percentage-value.level-poor {
+	.attendance-badge.poor {
 		background: #fee2e2;
 		color: #dc2626;
 	}
 
-	.level-badge {
+	.absensi-info {
+		margin-bottom: 1rem;
+	}
+
+	.pengajian-title {
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: #111827;
+		margin: 0 0 0.25rem 0;
+		line-height: 1.3;
+	}
+
+	.masjid-name {
+		font-size: 0.8rem;
+		color: #6b7280;
+		margin: 0 0 0.75rem 0;
+	}
+
+	.quran-hadist-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.info-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+		color: #6b7280;
+	}
+
+	.info-label {
+		font-weight: 500;
+		min-width: 50px;
+	}
+
+	.info-value {
+		color: #374151;
+		font-weight: 600;
+	}
+
+	.attendance-summary {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 1rem;
+		padding: 0.75rem;
+		background: #f8fafc;
+		border-radius: 8px;
+	}
+
+	.summary-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		text-align: center;
+	}
+
+	.summary-label {
+		font-size: 0.75rem;
+		color: #6b7280;
+	}
+
+	.summary-value {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #111827;
+	}
+
+	.attendance-level {
+		text-align: center;
+	}
+
+	.level-label {
 		font-size: 0.75rem;
 		font-weight: 500;
 		padding: 0.375rem 0.75rem;
 		border-radius: 6px;
 	}
 
-	.level-badge.level-excellent {
+	.level-label.excellent {
 		background: #dcfce7;
 		color: #15803d;
 	}
 
-	.level-badge.level-good {
+	.level-label.good {
 		background: #dbeafe;
 		color: #1d4ed8;
 	}
 
-	.level-badge.level-fair {
+	.level-label.fair {
 		background: #fef3c7;
 		color: #b45309;
 	}
 
-	.level-badge.level-poor {
-		background: #fee2e2;
-		color: #b91c1c;
-	}
-
-	/* Table Section (Desktop) */
-	.table-section {
-		display: none;
-	}
-
-	.table-container {
-		background: white;
-		border-radius: 12px;
-		overflow: hidden;
-		border: 1px solid #f1f5f9;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-	}
-
-	.report-table {
-		width: 100%;
-		font-size: 0.875rem;
-	}
-
-	.report-table th {
-		background: #f8fafc;
-		padding: 1rem;
-		text-align: left;
-		font-weight: 600;
-		color: #374151;
-		border-bottom: 1px solid #e5e7eb;
-	}
-
-	.report-table td {
-		padding: 1rem;
-		border-bottom: 1px solid #f1f5f9;
-	}
-
-	.report-table tr:last-child td {
-		border-bottom: none;
-	}
-
-	.table-stat {
-		font-weight: 600;
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-		font-size: 0.75rem;
-	}
-
-	.table-stat.success {
-		background: #dcfce7;
-		color: #16a34a;
-	}
-
-	.table-stat.error {
-		background: #fee2e2;
-		color: #dc2626;
-	}
-
-	.table-stat.warning {
-		background: #fef3c7;
-		color: #d97706;
-	}
-
-	.percentage-table {
-		font-weight: 600;
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-		font-size: 0.75rem;
-	}
-
-	.percentage-table.level-excellent {
-		background: #dcfce7;
-		color: #16a34a;
-	}
-
-	.percentage-table.level-good {
-		background: #dbeafe;
-		color: #2563eb;
-	}
-
-	.percentage-table.level-fair {
-		background: #fef3c7;
-		color: #d97706;
-	}
-
-	.percentage-table.level-poor {
-		background: #fee2e2;
-		color: #dc2626;
-	}
-
-	.level-badge-table {
-		font-size: 0.75rem;
-		font-weight: 500;
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-	}
-
-	.level-badge-table.level-excellent {
-		background: #dcfce7;
-		color: #15803d;
-	}
-
-	.level-badge-table.level-good {
-		background: #dbeafe;
-		color: #1d4ed8;
-	}
-
-	.level-badge-table.level-fair {
-		background: #fef3c7;
-		color: #b45309;
-	}
-
-	.level-badge-table.level-poor {
+	.level-label.poor {
 		background: #fee2e2;
 		color: #b91c1c;
 	}
@@ -1142,22 +1173,22 @@
 		align-items: center;
 		padding: 3rem 2rem;
 		background: white;
-		border-radius: 12px;
+		border-radius: 16px;
 		border: 1px solid #f1f5f9;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 		text-align: center;
 	}
 
-	.empty-icon {
-		color: #d1d5db;
-		margin-bottom: 1.5rem;
+	:global(.empty-icon) {
+		color: #d1d5db !important;
+		margin-bottom: 1rem !important;
 	}
 
 	.empty-title {
-		font-size: 1.25rem;
+		font-size: 1.125rem;
 		font-weight: 600;
 		color: #374151;
-		margin: 0 0 0.75rem 0;
+		margin: 0 0 0.5rem 0;
 	}
 
 	.empty-description {
@@ -1173,54 +1204,53 @@
 			padding: 1rem;
 		}
 
-		.summary-grid {
+		.filter-grid {
 			grid-template-columns: 1fr;
 		}
 
-		.summary-card {
-			padding: 1rem;
-			text-align: center;
-		}
-
-		.report-card {
-			padding: 1rem;
-		}
-
-		.jamaah-avatar {
-			width: 36px;
-			height: 36px;
-			font-size: 0.875rem;
-		}
-
-		.attendance-stats {
-			grid-template-columns: repeat(2, 1fr);
-		}
-
-		.report-footer {
+		.tab-button {
 			flex-direction: column;
-			gap: 0.75rem;
-			align-items: stretch;
+			gap: 0.25rem;
+			padding: 0.875rem 1rem;
+		}
+
+		.tab-button span {
+			font-size: 0.75rem;
 		}
 
 		.period-content {
 			flex-direction: column;
-			align-items: stretch;
-			gap: 1rem;
+			text-align: center;
 		}
 
-		.export-btn {
-			justify-content: center;
-		}
-	}
-
-	/* Desktop specific */
-	@media (min-width: 1024px) {
-		.table-section {
-			display: block;
+		.card-header {
+			flex-direction: column;
+			gap: 0.5rem;
+			align-items: flex-start;
 		}
 
-		.report-list {
-			display: none;
+		.chart-container {
+			height: 200px;
+		}
+
+		.pie-chart-highcharts {
+			height: 200px;
+		}
+
+		.stats-breakdown {
+			flex-direction: column;
+			gap: 0.5rem;
+		}
+
+		.attendance-summary {
+			flex-direction: column;
+			gap: 0.5rem;
+		}
+
+		.summary-item {
+			flex-direction: row;
+			justify-content: space-between;
+			text-align: left;
 		}
 	}
 </style>

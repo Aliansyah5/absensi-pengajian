@@ -222,11 +222,11 @@
 		}
 	}
 
-	function showMessage(type, text) {
+	function showMessage(type, text, duration = 3000) {
 		message = { type, text, show: true };
 		setTimeout(() => {
 			message.show = false;
-		}, 3000);
+		}, duration);
 	}
 
 	async function handlePengajianSubmit(pengajianData) {
@@ -262,36 +262,17 @@
 
 		isSaving = true;
 		try {
-			const absensiList = Object.values(absensiData).filter(item => item.status_kehadiran);
+			// Since auto-save handles individual records, this function now just
+			// ensures the absensi header is complete and navigates back
+			await AbsensiService.ensureAbsensiHeader({
+				formData: formData,
+				tanggal: selectedDate,
+				pengajianId: selectedPengajian.id
+			});
 
-			if (absensiList.length === 0) {
-				showMessage('error', 'Belum ada jamaah yang diabsen');
-				return;
-			}
+			showMessage('success', 'Sesi absensi berhasil diselesaikan');
 
-			// Use the new saveAbsensi API
-			if (existingAbsensiId) {
-				// Update existing record
-				await AbsensiService.updateAbsensiComplete({
-					absensiId: existingAbsensiId,
-					formData: formData,
-					jamaahAbsensi: absensiList,
-					tanggal: selectedDate,
-					pengajianId: selectedPengajian.id
-				});
-				showMessage('success', 'Absensi berhasil diperbarui');
-			} else {
-				// Create new record
-				await AbsensiService.saveAbsensi({
-					formData: formData,
-					jamaahAbsensi: absensiList,
-					tanggal: selectedDate,
-					pengajianId: selectedPengajian.id
-				});
-				showMessage('success', 'Absensi berhasil disimpan');
-			}
-
-			// Reset form
+			// Reset form and go back to list
 			currentView = 'list';
 			activeTab = 'form-pengajian';
 			selectedPengajian = null;
@@ -299,19 +280,83 @@
 			initializeAbsensiData();
 
 		} catch (error) {
-			console.error('Error saving absensi:', error);
-			showMessage('error', `Gagal menyimpan absensi: ${error.message}`);
+			console.error('Error finalizing absensi:', error);
+			showMessage('error', `Gagal menyelesaikan sesi: ${error.message}`);
 		} finally {
 			isSaving = false;
 		}
 	}
 
-	function handleAbsensiChange(jamaahId, status, keterangan = '') {
+	async function handleAbsensiChange(jamaahId, status, keterangan = '') {
+		// Update local state immediately for UI responsiveness
 		absensiData[jamaahId] = {
 			jamaah_id: jamaahId,
 			status_kehadiran: status,
 			keterangan
 		};
+
+		// Auto-save to database silently (no UI feedback if authentication fails)
+		await autoSaveAttendance(jamaahId, status, keterangan);
+	}
+
+	async function autoSaveAttendance(jamaahId, status, keterangan = '') {
+		if (!selectedPengajian) {
+			// Don't show error message, just log it
+			console.log('No pengajian selected for auto-save');
+			return;
+		}
+
+		try {
+			// Ensure absensi header exists
+			const absensiHeader = await AbsensiService.ensureAbsensiHeader({
+				formData: formData,
+				tanggal: selectedDate,
+				pengajianId: selectedPengajian.id
+			});
+
+			// If header creation failed (likely due to auth), skip silently
+			if (!absensiHeader) {
+				console.log('Header creation failed, skipping auto-save');
+				return;
+			}
+
+			// Store the absensi ID for future use
+			if (!existingAbsensiId) {
+				existingAbsensiId = absensiHeader.id;
+			}
+
+			// Update individual attendance
+			const result = await AbsensiService.updateIndividualAttendance({
+				absensiId: absensiHeader.id,
+				jamaahId: jamaahId,
+				status: status,
+				keterangan: keterangan
+			});
+
+			// Only show success message if save was actually successful
+			if (result) {
+				showMessage('success', `Status ${getStatusLabel(status)} berhasil disimpan`, 1500);
+			}
+
+		} catch (error) {
+			// Log error silently, don't show UI message
+			console.log('Auto-save failed silently:', error);
+
+			// Don't reset local state on auth errors to preserve user's selection
+			// Only reset if it's a real data error
+			if (error.message && !error.message.includes('tidak terautentikasi')) {
+				if (absensiData[jamaahId]) {
+					absensiData[jamaahId].status_kehadiran = '';
+				}
+			}
+		}
+	}	function getStatusLabel(status) {
+		switch (status) {
+			case 'H': return 'Hadir';
+			case 'I': return 'Izin';
+			case 'A': return 'Absen';
+			default: return 'Unknown';
+		}
 	}
 
 	// Navigation functions
@@ -573,6 +618,7 @@
 							title="Jamaah Laki-laki"
 							jamaahList={filteredJamaahLaki}
 							{absensiData}
+							showSavingIndicator={false}
 							on:absensiChange={e => handleAbsensiChange(e.detail.jamaahId, e.detail.status, e.detail.keterangan)}
 						/>
 
@@ -581,14 +627,19 @@
 							title="Jamaah Perempuan"
 							jamaahList={filteredJamaahPerempuan}
 							{absensiData}
+							showSavingIndicator={false}
 							on:absensiChange={e => handleAbsensiChange(e.detail.jamaahId, e.detail.status, e.detail.keterangan)}
 						/>
 					</div>
 
 					<!-- Save Button -->
 					<div class="save-section">
+						<div class="auto-save-info">
+							<CheckCircle size={16} />
+							<span>Pilihan absensi tersimpan otomatis</span>
+						</div>
 						<button
-							class="btn-save"
+							class="btn-save secondary"
 							on:click={saveAbsensi}
 							disabled={isSaving}
 						>
@@ -597,7 +648,7 @@
 								<span>Menyimpan...</span>
 							{:else}
 								<Save size={20} />
-								<span>Simpan Absensi</span>
+								<span>Finalisasi & Kembali</span>
 							{/if}
 						</button>
 					</div>
@@ -812,9 +863,24 @@
 
 	.save-section {
 		display: flex;
-		justify-content: center;
+		flex-direction: column;
+		align-items: center;
+		gap: 1rem;
 		padding-top: 2rem;
 		border-top: 1px solid #f3f4f6;
+	}
+
+	.auto-save-info {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: #10b981;
+		font-size: 0.875rem;
+		font-weight: 500;
+		padding: 0.5rem 1rem;
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+		border-radius: 8px;
 	}
 
 	.btn-save {
@@ -835,9 +901,18 @@
 		justify-content: center;
 	}
 
+	.btn-save.secondary {
+		background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+		box-shadow: 0 4px 12px rgba(107, 114, 128, 0.2);
+	}
+
 	.btn-save:hover:not(:disabled) {
 		transform: translateY(-2px);
 		box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+	}
+
+	.btn-save.secondary:hover:not(:disabled) {
+		box-shadow: 0 8px 20px rgba(107, 114, 128, 0.3);
 	}
 
 	.btn-save:disabled {

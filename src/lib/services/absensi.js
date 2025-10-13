@@ -7,6 +7,51 @@ import moment from "moment";
  */
 export class AbsensiService {
   /**
+   * Helper method to get current authenticated user from multiple sources
+   */
+  static async getCurrentUser() {
+    try {
+      // First try to get user from Supabase auth
+      const {
+        data: { user: supabaseUser },
+      } = await supabase.auth.getUser();
+
+      let currentUser = supabaseUser;
+
+      // If no Supabase user, try to get from localStorage session (for our mock auth)
+      if (!currentUser && typeof window !== "undefined") {
+        // Try the auth store first
+        const authUser = localStorage.getItem("auth_user");
+        if (authUser) {
+          try {
+            const parsedAuthUser = JSON.parse(authUser);
+            currentUser = parsedAuthUser.supabaseUser || parsedAuthUser;
+          } catch (e) {
+            console.log("Error parsing auth_user:", e);
+          }
+        }
+
+        // Fallback to supabase session format
+        if (!currentUser) {
+          const session = localStorage.getItem("supabase.auth.session");
+          if (session) {
+            try {
+              const parsedSession = JSON.parse(session);
+              currentUser = parsedSession.user;
+            } catch (e) {
+              console.log("Error parsing session:", e);
+            }
+          }
+        }
+      }
+
+      return currentUser;
+    } catch (error) {
+      console.log("Error getting current user:", error);
+      return null;
+    }
+  }
+  /**
    * Mendapatkan semua data absensi dengan pagination
    */
   static async getAllAbsensi(page = 1, limit = 10, filters = {}) {
@@ -758,5 +803,155 @@ export class AbsensiService {
     if (error) throw error;
 
     return data;
+  }
+
+  /**
+   * Update individual jamaah attendance status
+   * For real-time auto-save functionality
+   */
+  static async updateIndividualAttendance({
+    absensiId,
+    jamaahId,
+    status,
+    keterangan = "",
+  }) {
+    try {
+      const currentUser = await this.getCurrentUser();
+
+      // If no user, return null silently (don't throw error)
+      if (!currentUser) {
+        console.log("User not authenticated, skipping auto-save");
+        return null;
+      }
+
+      // Get user email for logging
+      const userEmail = currentUser.email || "system";
+
+      // Check if attendance record already exists
+      const { data: existingRecord } = await supabase
+        .from("dabsensi")
+        .select("*")
+        .eq("id", absensiId)
+        .eq("id_siswa", jamaahId)
+        .single();
+
+      const attendanceData = {
+        id: absensiId,
+        id_siswa: jamaahId,
+        status: status,
+        keterangan: keterangan || null,
+        user_modified: userEmail,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (existingRecord) {
+        // Update existing record
+        const { data, error } = await supabase
+          .from("dabsensi")
+          .update(attendanceData)
+          .eq("id", absensiId)
+          .eq("id_siswa", jamaahId)
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data;
+      } else {
+        // Insert new record - create new object with created_at
+        const newAttendanceData = {
+          ...attendanceData,
+          created_at: new Date().toISOString(),
+        };
+
+        const { data, error } = await supabase
+          .from("dabsensi")
+          .insert([newAttendanceData])
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data;
+      }
+    } catch (error) {
+      // Log error but don't throw to prevent UI disruption
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.log("Auto-save failed:", errorMessage);
+      return null;
+    }
+  }
+
+  /**
+   * Create or update absensi header for auto-save functionality
+   */
+  static async ensureAbsensiHeader({ formData, tanggal, pengajianId }) {
+    try {
+      const currentUser = await this.getCurrentUser();
+
+      // If no user, return null silently
+      if (!currentUser) {
+        console.log("User not authenticated, skipping header creation");
+        return null;
+      }
+
+      // Get user email for logging
+      const userEmail = currentUser.email || "system";
+
+      // Check if absensi header already exists for this date and pengajian
+      const { data: existingAbsensi } = await supabase
+        .from("absensi")
+        .select("*")
+        .eq("tgl", tanggal)
+        .eq("pengajian", pengajianId)
+        .eq("active", 1)
+        .single();
+
+      if (existingAbsensi) {
+        return existingAbsensi;
+      }
+
+      // Create new absensi header
+      const absensiData = {
+        pengajian: pengajianId,
+        tgl: tanggal,
+        tempat: formData.tempat || null,
+        kelompok: formData.kelompok || null,
+        tingkat: Array.isArray(formData.tingkat)
+          ? formData.tingkat.join(",")
+          : formData.tingkat || "",
+        jam_mulai: formData.jam_mulai || "19:00",
+        jam_akhir: formData.jam_akhir || "20:30",
+        quran: formData.quran || null,
+        pengajar_quran: formData.pengajar_quran || "",
+        ayat_awal: formData.ayat_awal || "",
+        ayat_akhir: formData.ayat_akhir || "",
+        hadist: formData.hadist || null,
+        pengajar_hadist: formData.pengajar_hadist || "",
+        hal_awal: formData.hal_awal || "",
+        hal_akhir: formData.hal_akhir || "",
+        penasehat: formData.penasehat || "",
+        infaq: parseFloat(formData.infaq) || 0,
+        active: 1,
+        user_created: userEmail,
+        user_modified: userEmail,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("absensi")
+        .insert([absensiData])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      // Log error but don't throw to prevent UI disruption
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.log("Header creation failed:", errorMessage);
+      return null;
+    }
   }
 }
