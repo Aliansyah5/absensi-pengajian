@@ -217,7 +217,7 @@
 <svelte:window bind:innerWidth />
 
 <AppHeader
-	title="Laporan Absensi"
+	title="Laporan Absensi Pengajian"
 	on:search-click={toggleFilters}
 	showSearch={true}
 />

@@ -3,7 +3,8 @@
 	import { createEventDispatcher } from 'svelte';
 	import { AbsensiService } from '$lib/services/absensi.js';
 	import { PengajianService, KategoriService } from '$lib/services/masterData.js';
-	import { Plus, Eye, Edit3, Trash2, Calendar, MapPin, Users, Search, Filter } from 'lucide-svelte';
+	import { Plus, Eye, Edit3, Trash2, Calendar, MapPin, Users, Search, Filter, CloudCog } from 'lucide-svelte';
+  import moment from 'moment';
 
 	const dispatch = createEventDispatcher();
 
@@ -14,6 +15,7 @@
 	let currentPage = 1;
 	let totalPages = 1;
 	let searchQuery = '';
+
 	let filters = {
 		tanggal_mulai: '',
 		tanggal_akhir: '',
@@ -28,6 +30,8 @@
 	async function loadInitialData() {
 		try {
 			// Load pengajian list for filter
+            filters.tanggal_mulai = moment().startOf('month').format('YYYY-MM-DD');
+		    filters.tanggal_akhir = moment().endOf('month').format('YYYY-MM-DD');
 			pengajianList = await PengajianService.getAllPengajian();
 			// Load kategori list for tingkat display
 			kategoriList = await KategoriService.getAllKategori();

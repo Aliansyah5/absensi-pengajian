@@ -3,9 +3,12 @@
 	import { auth } from '$lib/stores/auth.js';
 	import { goto } from '$app/navigation';
 	import { DatabaseService } from '$lib/utils/supabase.js';
+	import { AbsensiService } from '$lib/services/absensi.js';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
-	import { Users, UserCheck, UserX, Calendar, TrendingUp, ChevronRight, Plus, BarChart, MapPin } from 'lucide-svelte';
+	import { Users, UserCheck, UserX, Calendar, TrendingUp,
+        ChevronRight, Plus, BarChart, MapPin, Clock, BookOpen, Percent,
+        FileChartColumnIncreasing} from 'lucide-svelte';
 
 	let isLoading = true;
 	let innerWidth = 0;
@@ -23,6 +26,7 @@
 		izin: 0,
 		total: 0
 	};
+	let pengajianHariIni = [];
 
 	$: isDesktop = innerWidth >= 768;
 
@@ -53,16 +57,10 @@
 				stats = statsResult.data;
 			}
 
-			// Load today's attendance
-			const absensiResult = await DatabaseService.getAbsensiHariIni();
-			if (absensiResult.data) {
-				const attendance = absensiResult.data;
-				absensiHariIni = {
-					hadir: attendance.filter(a => a.status_kehadiran === 'H').length,
-					absen: attendance.filter(a => a.status_kehadiran === 'A').length,
-					izin: attendance.filter(a => a.status_kehadiran === 'I').length,
-					total: attendance.length
-				};
+			const absensiTodayResult = await AbsensiService.getAllAbsensiToday();
+
+			if (absensiTodayResult && absensiTodayResult.length > 0) {
+				pengajianHariIni = absensiTodayResult;
 			}
 		} catch (error) {
 			console.error('Error loading dashboard data:', error);
@@ -83,6 +81,23 @@
 			day: 'numeric',
 			month: 'long'
 		});
+	}
+
+	function handlePengajianClick(absensiId) {
+		// Navigate to edit existing absensi
+		goto(`/absensi-new?edit=${absensiId}`);
+	}
+
+	function getRandomGradient() {
+		const gradients = [
+			'from-blue-500 to-blue-600',
+			'from-green-500 to-green-600',
+			'from-purple-500 to-purple-600',
+			'from-orange-500 to-orange-600',
+			'from-pink-500 to-pink-600',
+			'from-indigo-500 to-indigo-600'
+		];
+		return gradients[Math.floor(Math.random() * gradients.length)];
 	}
 
 	const quickActions = [
@@ -111,11 +126,11 @@
 			gradient: 'from-purple-500 to-purple-600'
 		},
 		{
-			title: 'Laporan',
-			icon: Plus,
+			title: 'Laporan Pengajian',
+			icon: FileChartColumnIncreasing,
 			href: '/laporan',
 			color: 'bg-orange-500',
-			description: 'Lihat laporan absensi',
+			description: 'Lihat laporan pengajian',
 			gradient: 'from-orange-500 to-orange-600'
 		}
 	];
@@ -223,70 +238,65 @@
 
 			<!-- Today's Attendance -->
 			<div class="attendance-section">
-				<h2 class="section-title">Absensi Hari Ini</h2>
+				<h2 class="section-title">Pengajian Hari Ini</h2>
 				<div class="attendance-card">
-					{#if absensiHariIni.total > 0}
-						<div class="attendance-summary">
-							<div class="total-attendance">
-								<span class="total-number">{absensiHariIni.total}</span>
-								<span class="total-label">jamaah tercatat</span>
-							</div>
+					{#if pengajianHariIni.length > 0}
+						<div class="pengajian-grid">
+							{#each pengajianHariIni as absensi}
+								<button
+									class="pengajian-card"
+									on:click={() => handlePengajianClick(absensi.id)}
+								>
+									<div class="pengajian-icon bg-gradient-to-br {getRandomGradient()}">
+										<BookOpen size={24} />
+									</div>
+									<div class="pengajian-content">
+										<h3 class="pengajian-title">{absensi.mpengajian?.nama_pengajian || 'Pengajian'}</h3>
+										<div class="pengajian-meta">
+											<div class="pengajian-time">
+												<Clock size={14} />
+												<span>{absensi.jam_mulai || '19:00'} - {absensi.jam_akhir || '20:30'}</span>
+											</div>
+										</div>
+										<div class="pengajian-details">
+											{#if absensi.malquran?.nama_surat}
+												<div class="detail-item">
+													<span class="detail-label">Al-Quran:</span>
+													<span class="detail-value">{absensi.malquran.nama_surat}</span>
+												</div>
+											{/if}
+											{#if absensi.mhadist?.nama_hadist}
+												<div class="detail-item">
+													<span class="detail-label">Hadist:</span>
+													<span class="detail-value">{absensi.mhadist.nama_hadist}</span>
+												</div>
+											{/if}
+										</div>
+									</div>
+									<ChevronRight size={16} class="pengajian-arrow" />
+								</button>
+							{/each}
 						</div>
 
-						<!-- Attendance Breakdown */
-						<div class="attendance-breakdown" class:desktop-layout={isDesktop}>
-							<div class="attendance-item hadir">
-								<div class="attendance-icon">
-									<UserCheck size={20} />
-								</div>
-								<div class="attendance-data">
-									<div class="attendance-number">{absensiHariIni.hadir}</div>
-									<div class="attendance-label">Hadir</div>
-									<div class="attendance-percentage">{getAttendancePercentage('hadir')}%</div>
-								</div>
+						<!-- <div class="attendance-summary">
+							<div class="summary-item">
+								<span class="summary-number">{absensiHariIni.total}</span>
+								<span class="summary-label">jamaah tercatat</span>
 							</div>
-
-							<div class="attendance-item absen">
-								<div class="attendance-icon">
-									<UserX size={20} />
-								</div>
-								<div class="attendance-data">
-									<div class="attendance-number">{absensiHariIni.absen}</div>
-									<div class="attendance-label">Absen</div>
-									<div class="attendance-percentage">{getAttendancePercentage('absen')}%</div>
-								</div>
+							<div class="summary-item">
+								<span class="summary-number">{absensiHariIni.hadir}</span>
+								<span class="summary-label">hadir</span>
 							</div>
-
-							<div class="attendance-item izin">
-								<div class="attendance-icon">
-									<Calendar size={20} />
-								</div>
-								<div class="attendance-data">
-									<div class="attendance-number">{absensiHariIni.izin}</div>
-									<div class="attendance-label">Izin</div>
-									<div class="attendance-percentage">{getAttendancePercentage('izin')}%</div>
-								</div>
+							<div class="summary-item">
+								<span class="summary-number">{pengajianHariIni.length}</span>
+								<span class="summary-label">pengajian aktif</span>
 							</div>
-						</div>
-
-						<!-- Progress Bar -->
-						<div class="progress-container">
-							<div class="progress-bar">
-								<div
-									class="progress-fill hadir"
-									style="width: {getAttendancePercentage('hadir')}%"
-								></div>
-								<div
-									class="progress-fill izin"
-									style="width: {getAttendancePercentage('izin')}%"
-								></div>
-							</div>
-						</div>
+						</div> -->
 					{:else}
 						<div class="empty-attendance">
-							<UserCheck size={48} class="empty-icon" />
+							<BookOpen size={48} class="empty-icon" />
 							<div class="empty-title">Belum ada absensi hari ini</div>
-							<div class="empty-description">Mulai catat kehadiran jamaah untuk pengajian hari ini</div>
+							<div class="empty-description">Mulai buat absensi baru untuk pengajian hari ini</div>
 							<a href="/absensi-new" class="btn btn-primary">
 								<Plus size={18} />
 								Input Absensi
@@ -543,9 +553,153 @@
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 	}
 
-	.attendance-summary {
-		text-align: center;
+	/* Pengajian Cards */
+	.pengajian-grid {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.75rem;
 		margin-bottom: 1.5rem;
+	}
+
+	@media (min-width: 768px) {
+		.pengajian-grid {
+			grid-template-columns: repeat(2, 1fr);
+			gap: 1rem;
+		}
+	}
+
+	.pengajian-card {
+		display: flex;
+		align-items: center;
+		padding: 1rem;
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+		border-radius: 12px;
+		transition: all 0.2s ease;
+		cursor: pointer;
+		gap: 1rem;
+		width: 100%;
+		text-align: left;
+	}
+
+	.pengajian-card:hover {
+		background: #f1f5f9;
+		border-color: #cbd5e1;
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	}
+
+	.pengajian-card:active {
+		transform: translateY(0);
+	}
+
+	.pengajian-icon {
+		width: 48px;
+		height: 48px;
+		border-radius: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: white;
+		flex-shrink: 0;
+	}
+
+	.pengajian-content {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.pengajian-title {
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: #111827;
+		margin: 0 0 0.5rem 0;
+		line-height: 1.3;
+	}
+
+	.pengajian-meta {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.pengajian-time {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-size: 0.8rem;
+		color: #6b7280;
+	}
+
+	.pengajian-details {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.detail-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+	}
+
+	.detail-label {
+		color: #9ca3af;
+		font-weight: 500;
+		min-width: 60px;
+	}
+
+	.detail-value {
+		color: #4b5563;
+		font-weight: 500;
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.pengajian-arrow {
+		color: #9ca3af;
+		flex-shrink: 0;
+		transition: transform 0.2s ease;
+	}
+
+	.pengajian-card:hover .pengajian-arrow {
+		transform: translateX(2px);
+		color: #6b7280;
+	}
+
+	.attendance-summary {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 1rem;
+		padding: 1rem;
+		background: #f8fafc;
+		border-radius: 12px;
+		border: 1px solid #e2e8f0;
+	}
+
+	.summary-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+		gap: 0.25rem;
+	}
+
+	.summary-number {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: #111827;
+		line-height: 1;
+	}
+
+	.summary-label {
+		font-size: 0.75rem;
+		color: #6b7280;
+		font-weight: 500;
 	}
 
 	.total-attendance {
@@ -817,6 +971,45 @@
 		.attendance-icon {
 			width: 32px;
 			height: 32px;
+		}
+
+		.pengajian-card {
+			padding: 0.875rem;
+		}
+
+		.pengajian-icon {
+			width: 40px;
+			height: 40px;
+		}
+
+		.pengajian-title {
+			font-size: 0.875rem;
+		}
+
+		.pengajian-time {
+			font-size: 0.75rem;
+		}
+
+		.detail-item {
+			font-size: 0.7rem;
+		}
+
+		.detail-label {
+			min-width: 50px;
+		}
+
+		.attendance-summary {
+			grid-template-columns: repeat(3, 1fr);
+			gap: 0.75rem;
+			padding: 0.875rem;
+		}
+
+		.summary-number {
+			font-size: 1.25rem;
+		}
+
+		.summary-label {
+			font-size: 0.7rem;
 		}
 	}
 </style>

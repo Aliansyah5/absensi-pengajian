@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
-    "lucide-svelte": "^0.447.0"
+    "lucide-svelte": "^0.447.0",
+    "moment": "^2.30.1"
   }
 }

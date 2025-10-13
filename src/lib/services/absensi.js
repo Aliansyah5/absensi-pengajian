@@ -1,4 +1,5 @@
 import { supabase } from "../utils/supabase.js";
+import moment from "moment";
 
 /**
  * Absensi Service untuk struktur database baru
@@ -9,6 +10,9 @@ export class AbsensiService {
    * Mendapatkan semua data absensi dengan pagination
    */
   static async getAllAbsensi(page = 1, limit = 10, filters = {}) {
+    //var today yyyy-mm-dd with momentjs
+    const today = moment().format("YYYY-MM-DD");
+
     let query = supabase
       .from("absensi")
       .select(
@@ -29,6 +33,30 @@ export class AbsensiService {
     if (filters.tempat) query = query.eq("tempat", filters.tempat);
     if (filters.tanggal_mulai) query = query.gte("tgl", filters.tanggal_mulai);
     if (filters.tanggal_akhir) query = query.lte("tgl", filters.tanggal_akhir);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  }
+
+  static async getAllAbsensiToday() {
+    //var today yyyy-mm-dd with momentjs
+    const today = moment().format("YYYY-MM-DD");
+
+    let query = supabase
+      .from("absensi")
+      .select(
+        `
+				*,
+				mpengajian (nama_pengajian),
+				mmasjid (nama_masjid),
+				malquran (nama_surat),
+				mhadist (nama_hadist)
+			`
+      )
+      .eq("active", 1)
+      .eq("tgl", today)
+      .order("tgl", { ascending: false });
 
     const { data, error } = await query;
     if (error) throw error;

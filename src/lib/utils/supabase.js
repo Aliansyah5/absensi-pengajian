@@ -259,7 +259,7 @@ export class DatabaseService {
           supabase.from("mjamaah").select("jk").eq("active", 1),
 
           // Total pengajian
-          supabase.from("pengajian").select("id").eq("active", 1),
+          supabase.from("absensi").select("id").eq("active", 1),
 
           // Total kelompok
           supabase.from("mkelompok").select("id").eq("active", 1),
@@ -293,16 +293,11 @@ export class DatabaseService {
         .from("absensi")
         .select(
           `
-          status_kehadiran,
-          mjamaah!inner(
-            id,
-            nama,
-            mkategori(category)
-          )
+         id
         `
         )
-        .eq("tanggal_absensi", today)
-        .eq("mjamaah.active", 1);
+        .eq("tgl", today)
+        .eq(" active", 1);
 
       if (error) {
         console.error("Error getting today attendance:", error);
