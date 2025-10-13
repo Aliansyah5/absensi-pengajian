@@ -390,35 +390,272 @@ export class AbsensiService {
    * Mendapatkan laporan absensi jamaah
    */
   static async getLaporanAbsensiJamaah(jamaahId, filters = {}) {
-    let query = supabase
-      .from("dabsensi")
-      .select(
+    try {
+      console.log(
+        `[AbsensiService] Fetching attendance for jamaah ID: ${jamaahId} with filters:`,
+        filters
+      );
+
+      // ✅ Validasi jamaah ID
+      if (!jamaahId || isNaN(jamaahId)) {
+        throw new Error(`Invalid jamaah ID: ${jamaahId}`);
+      }
+
+      const numericJamaahId = parseInt(jamaahId);
+
+      // ✅ Query dasar
+      let query = supabase
+        .from("dabsensi")
+        .select(
+          `
+        id,
+        id_siswa,
+        status,
+        keterangan,
+        jam_datang,
+        created_at,
+        updated_at,
+        absensi!inner(
+          id,
+          tgl,
+          pengajian,
+          active,
+          mpengajian(nama_pengajian)
+        )
+      `
+        )
+        .eq("id_siswa", numericJamaahId)
+        .eq("absensi.active", 1);
+
+      // ✅ Filter tanggal dan pengajian
+      if (filters.tanggal_mulai) {
+        query = query.gte("absensi.tgl", filters.tanggal_mulai);
+        console.log(
+          `[AbsensiService] Applied start date filter: ${filters.tanggal_mulai}`
+        );
+      }
+
+      if (filters.tanggal_akhir) {
+        query = query.lte("absensi.tgl", filters.tanggal_akhir);
+        console.log(
+          `[AbsensiService] Applied end date filter: ${filters.tanggal_akhir}`
+        );
+      }
+
+      if (filters.pengajian) {
+        query = query.eq("absensi.pengajian", filters.pengajian);
+        console.log(
+          `[AbsensiService] Applied pengajian filter: ${filters.pengajian}`
+        );
+      }
+
+      // 🚫 Tidak bisa .order("absensi.tgl") — jadi kita urutkan manual di JS nanti
+      console.log(
+        `[AbsensiService] Executing query for jamaah ${numericJamaahId}...`
+      );
+      const { data, error } = await query;
+
+      if (error) {
+        console.error(`[AbsensiService] Database error:`, error);
+        throw error;
+      }
+
+      let result = data || [];
+
+      // ✅ Urutkan manual berdasarkan absensi.tgl (descending)
+      result = result.sort((a, b) => {
+        const dateA = new Date(a.absensi?.tgl || 0);
+        const dateB = new Date(b.absensi?.tgl || 0);
+        return dateB - dateA;
+      });
+
+      console.log(
+        `[AbsensiService] Found ${result.length} records for jamaah ${numericJamaahId}`
+      );
+
+      if (result.length > 0) {
+        console.log(`[AbsensiService] Sample record:`, {
+          id: result[0].id,
+          tgl: result[0].absensi?.tgl,
+          pengajian: result[0].absensi?.mpengajian?.nama_pengajian,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      console.error(
+        `[AbsensiService] Error in getLaporanAbsensiJamaah for jamaah ${jamaahId}:`,
+        {
+          message: error?.message,
+          name: error?.name,
+          code: error?.code,
+          filters,
+        }
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Alternative method to get attendance data with simplified approach
+   * Useful when the main method has relationship issues
+   */
+  static async getLaporanAbsensiJamaahSimple(jamaahId, filters = {}) {
+    try {
+      console.log(
+        `[AbsensiService] Fetching attendance (simple) for jamaah ID: ${jamaahId} with filters:`,
+        filters
+      );
+
+      // Validate jamaah ID
+      if (!jamaahId || isNaN(jamaahId)) {
+        throw new Error(`Invalid jamaah ID: ${jamaahId}`);
+      }
+
+      // First, get all dabsensi records for this jamaah
+      let dabsensiQuery = supabase
+        .from("dabsensi")
+        .select("*")
+        .eq("id_siswa", jamaahId);
+
+      console.log(
+        `[AbsensiService] Fetching dabsensi records for jamaah ${jamaahId}...`
+      );
+      const { data: dabsensiData, error: dabsensiError } = await dabsensiQuery;
+
+      if (dabsensiError) {
+        console.error(
+          `[AbsensiService] Error fetching dabsensi for jamaah ${jamaahId}:`,
+          dabsensiError
+        );
+        throw dabsensiError;
+      }
+
+      if (!dabsensiData || dabsensiData.length === 0) {
+        console.log(
+          `[AbsensiService] No dabsensi records found for jamaah ${jamaahId}`
+        );
+        return [];
+      }
+
+      console.log(
+        `[AbsensiService] Found ${dabsensiData.length} dabsensi records for jamaah ${jamaahId}`
+      );
+
+      // Get unique absensi IDs from dabsensi records
+      const absensiIds = [...new Set(dabsensiData.map((d) => d.id))];
+
+      if (absensiIds.length === 0) {
+        console.log(
+          `[AbsensiService] No absensi IDs found in dabsensi records`
+        );
+        return [];
+      }
+
+      console.log(
+        `[AbsensiService] Found ${absensiIds.length} unique absensi IDs:`,
+        absensiIds.slice(0, 5),
+        absensiIds.length > 5 ? "..." : ""
+      );
+
+      // Get absensi headers for these IDs with filters
+      let absensiQuery = supabase
+        .from("absensi")
+        .select(
+          `
+          id,
+          tgl,
+          pengajian,
+          active,
+          mpengajian(nama_pengajian)
         `
-				*,
-				absensi!inner(tgl, pengajian, mpengajian(nama_pengajian))
-			`
-      )
-      .eq("id_siswa", jamaahId);
+        )
+        .in("id", absensiIds)
+        .eq("active", 1);
 
-    // Apply filters
-    if (filters.tanggal_mulai) {
-      query = query.gte("absensi.tgl", filters.tanggal_mulai);
+      // Apply date filters
+      if (filters.tanggal_mulai) {
+        absensiQuery = absensiQuery.gte("tgl", filters.tanggal_mulai);
+        console.log(
+          `[AbsensiService] Applied start date filter: ${filters.tanggal_mulai}`
+        );
+      }
+      if (filters.tanggal_akhir) {
+        absensiQuery = absensiQuery.lte("tgl", filters.tanggal_akhir);
+        console.log(
+          `[AbsensiService] Applied end date filter: ${filters.tanggal_akhir}`
+        );
+      }
+      if (filters.pengajian) {
+        absensiQuery = absensiQuery.eq("pengajian", filters.pengajian);
+        console.log(
+          `[AbsensiService] Applied pengajian filter: ${filters.pengajian}`
+        );
+      }
+
+      console.log(`[AbsensiService] Fetching absensi headers...`);
+      const { data: absensiData, error: absensiError } = await absensiQuery;
+
+      if (absensiError) {
+        console.error(
+          `[AbsensiService] Error fetching absensi for jamaah ${jamaahId}:`,
+          absensiError
+        );
+        throw absensiError;
+      }
+
+      console.log(
+        `[AbsensiService] Found ${
+          absensiData?.length || 0
+        } matching absensi records`
+      );
+
+      // Combine dabsensi and absensi data
+      const result = dabsensiData
+        .map((dabsensi) => {
+          const absensi = absensiData?.find((a) => a.id === dabsensi.id);
+          if (absensi) {
+            return {
+              ...dabsensi,
+              absensi: absensi,
+            };
+          }
+          return null;
+        })
+        .filter((item) => item !== null)
+        .sort((a, b) => {
+          const dateA = new Date(b.absensi.tgl);
+          const dateB = new Date(a.absensi.tgl);
+          return dateA.getTime() - dateB.getTime();
+        });
+
+      console.log(
+        `[AbsensiService] Successfully combined data: ${result.length} attendance records (simple) for jamaah ${jamaahId}`
+      );
+
+      // Log sample of the result for debugging
+      if (result.length > 0) {
+        console.log(`[AbsensiService] Sample combined record:`, {
+          id: result[0].id,
+          id_siswa: result[0].id_siswa,
+          status: result[0].status,
+          absensi_date: result[0].absensi?.tgl,
+          pengajian_name: result[0].absensi?.mpengajian?.nama_pengajian,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      console.error(
+        `[AbsensiService] Error in getLaporanAbsensiJamaahSimple for jamaah ${jamaahId}:`,
+        {
+          message: error.message,
+          stack: error.stack,
+          filters: filters,
+        }
+      );
+      throw error;
     }
-    if (filters.tanggal_akhir) {
-      query = query.lte("absensi.tgl", filters.tanggal_akhir);
-    }
-    if (filters.pengajian) {
-      query = query.eq("absensi.pengajian", filters.pengajian);
-    }
-
-    query = query
-      .eq("absensi.active", 1)
-      .order("absensi.tgl", { ascending: false });
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    return data;
   }
 
   /**

@@ -875,6 +875,7 @@ export class JamaahService extends MasterDataService {
     }
     if (filters.kelompok) query = query.eq("id_kelompok", filters.kelompok);
     if (filters.jk) query = query.eq("jk", filters.jk);
+    if (filters.tingkat) query = query.eq("tingkat", filters.tingkat);
 
     const { data, error } = await query;
     if (error) throw error;

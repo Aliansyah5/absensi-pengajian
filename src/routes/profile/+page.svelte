@@ -244,8 +244,8 @@
 				</div>
 			</div>
 
-						<!-- Menu Options Section -->
-			<div class="section">
+			<!-- Menu Options Section -->
+			<!-- <div class="section">
 				<h3 class="section-title">Pengaturan & Aksi</h3>
 				<div class="menu-list">
 					{#each menuItems as item, index}
@@ -267,7 +267,7 @@
 						</button>
 					{/each}
 				</div>
-			</div>
+			</div> -->
 
 			<!-- App Information Section -->
 			<div class="section">

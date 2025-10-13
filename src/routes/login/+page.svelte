@@ -175,17 +175,6 @@
 					{/if}
 				</button>
 
-				<!-- Test Connection Button -->
-				<button type="button" class="btn btn-secondary w-full" on:click={testDatabaseConnection} disabled={isTesting}>
-					{#if isTesting}
-						<div class="spinner"></div>
-						<span>Testing...</span>
-					{:else}
-						<Database size={18} />
-						<span>Test Database Connection</span>
-					{/if}
-				</button>
-
 				<!-- Test Result -->
 				{#if testResult}
 					<div class="p-3 bg-gray-50 rounded-xl border">
@@ -195,21 +184,10 @@
 			</form>
 		</div>
 
-		<!-- Demo Credentials -->
-		<div class="card">
-			<div class="p-4 text-center">
-				<h3 class="font-medium text-gray-900 mb-2">Akun Demo</h3>
-				<div class="text-sm text-gray-600 space-y-1">
-					<p><strong>Email:</strong> admin@pengajian.com</p>
-					<p><strong>Password:</strong> password</p>
-				</div>
-			</div>
-		</div>
-
 		<!-- Footer -->
 		<div class="text-center mt-6">
 			<p class="text-xs text-gray-500">
-				© 2025 Absensi Pengajian. All rights reserved.
+				© 2025 IT Team. All rights reserved.
 			</p>
 		</div>
 	</div>

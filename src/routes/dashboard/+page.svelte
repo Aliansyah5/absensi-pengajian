@@ -8,7 +8,8 @@
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import { Users, UserCheck, UserX, Calendar, TrendingUp,
         ChevronRight, Plus, BarChart, MapPin, Clock, BookOpen, Percent,
-        FileChartColumnIncreasing} from 'lucide-svelte';
+        FileChartColumnIncreasing,
+        User} from 'lucide-svelte';
 
 	let isLoading = true;
 	let innerWidth = 0;
@@ -132,6 +133,14 @@
 			color: 'bg-orange-500',
 			description: 'Lihat laporan pengajian',
 			gradient: 'from-orange-500 to-orange-600'
+		},
+		{
+			title: 'Laporan Ketertiban',
+			icon: Percent,
+			href: '/laporan-ketertiban',
+			color: 'bg-pink-500',
+			description: 'Laporan kehadiran jamaah',
+			gradient: 'from-pink-500 to-pink-600'
 		}
 	];
 
@@ -203,36 +212,24 @@
 					{#if isDesktop}
 						<div class="stat-card info">
 							<div class="stat-icon">
-								<BarChart size={24} />
+                                <User size={24} />
 							</div>
 							<div class="stat-info">
-								<div class="stat-number">{stats.total_kelompok}</div>
-								<div class="stat-label">Kelompok</div>
+								<div class="stat-number">{stats.total_putra}</div>
+								<div class="stat-label">Jamaah Laki Laki</div>
 							</div>
 						</div>
 
 						<div class="stat-card warning">
 							<div class="stat-icon">
-								<MapPin size={24} />
+								     <User size={24} />
 							</div>
 							<div class="stat-info">
-								<div class="stat-number">{stats.total_masjid}</div>
-								<div class="stat-label">Masjid</div>
+								<div class="stat-number">{stats.total_putri}</div>
+								<div class="stat-label">Jamaah Perempuan</div>
 							</div>
 						</div>
 					{/if}
-				</div>
-
-				<!-- Gender Breakdown -->
-				<div class="gender-stats" class:desktop-layout={isDesktop}>
-					<div class="gender-card male">
-						<div class="gender-number">{stats.total_putra}</div>
-						<div class="gender-label">Jamaah Putra</div>
-					</div>
-					<div class="gender-card female">
-						<div class="gender-number">{stats.total_putri}</div>
-						<div class="gender-label">Jamaah Putri</div>
-					</div>
 				</div>
 			</div>
 
