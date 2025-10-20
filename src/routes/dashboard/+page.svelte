@@ -127,6 +127,14 @@
 			gradient: 'from-purple-500 to-purple-600'
 		},
 		{
+			title: 'Laporan Database Jamaah',
+			icon: Users,
+			href: '/laporan-jamaah',
+			color: 'bg-cyan-500',
+			description: 'Statistik database jamaah',
+			gradient: 'from-cyan-500 to-cyan-600'
+		},
+		{
 			title: 'Laporan Pengajian',
 			icon: FileChartColumnIncreasing,
 			href: '/laporan',

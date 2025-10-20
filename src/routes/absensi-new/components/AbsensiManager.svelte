@@ -169,7 +169,7 @@
 
 	async function syncJamaahData() {
 		try {
-			showMessage('info', 'Sinkronisasi data jamaah...');
+			showMessage('info', 'Sinkronisasi data jamaah terbaru...');
 
 			// Prepare filters based on form data
 			const filters = {};
@@ -187,22 +187,22 @@
 
 			console.log('Sync jamaah with filters:', filters);
 
-			// Reload jamaah data with filters
+			// Reload jamaah data with filters - ALWAYS get fresh/latest data from database
 			const newJamaahList = await JamaahService.getAllJamaah(filters);
 
-			console.log('Filtered jamaah data:', newJamaahList);
+			console.log('Loaded LATEST jamaah data:', newJamaahList.length, 'jamaah found');
 
 			// Preserve existing absensi data
 			const existingData = { ...absensiData };
 
-			// Initialize new structure
+			// Initialize new structure for ALL current jamaah
 			absensiData = {};
 			newJamaahList.forEach(jamaah => {
 				if (existingData[jamaah.id]) {
-					// Keep existing data
+					// Keep existing attendance data if jamaah was already in the list
 					absensiData[jamaah.id] = existingData[jamaah.id];
 				} else {
-					// Initialize new jamaah
+					// Initialize new jamaah (yang baru ditambahkan)
 					absensiData[jamaah.id] = {
 						jamaah_id: jamaah.id,
 						status_kehadiran: '',
@@ -211,10 +211,17 @@
 				}
 			});
 
+			// Update jamaah list with latest data
 			jamaahList = newJamaahList;
 
 			const jumlahJamaah = newJamaahList.length;
-			showMessage('success', `Data jamaah berhasil disinkronkan (${jumlahJamaah} jamaah ditemukan)`);
+			const jumlahBaru = newJamaahList.length - Object.keys(existingData).length;
+
+			if (jumlahBaru > 0) {
+				showMessage('success', `Data jamaah berhasil disinkronkan (${jumlahJamaah} jamaah, +${jumlahBaru} baru)`);
+			} else {
+				showMessage('success', `Data jamaah berhasil disinkronkan (${jumlahJamaah} jamaah ditemukan)`);
+			}
 
 		} catch (error) {
 			console.error('Error syncing jamaah data:', error);
@@ -243,7 +250,27 @@
 				return;
 			}
 
-			showMessage('success', 'Data pengajian berhasil disimpan');
+			// Save absensi header first (create mode)
+			showMessage('info', 'Menyimpan data pengajian...');
+
+			const absensiHeader = await AbsensiService.ensureAbsensiHeader({
+				formData: formData,
+				tanggal: selectedDate,
+				pengajianId: selectedPengajian.id
+			});
+
+			if (!absensiHeader) {
+				showMessage('error', 'Gagal menyimpan header pengajian');
+				return;
+			}
+
+			// Store the absensi ID
+			existingAbsensiId = absensiHeader.id;
+
+			// Reload jamaah data based on selected kelompok and tingkat
+			await syncJamaahData();
+
+			showMessage('success', 'Data pengajian berhasil disimpan. Silakan input absensi jamaah.');
 
 			// Move to absensi tab
 			activeTab = 'check-absensi';
@@ -270,7 +297,7 @@
 				pengajianId: selectedPengajian.id
 			});
 
-			showMessage('success', 'Sesi absensi berhasil diselesaikan');
+			showMessage('success', 'Absensi berhasil diselesaikan dan disimpan');
 
 			// Reset form and go back to list
 			currentView = 'list';
@@ -435,13 +462,13 @@
 				selectedPengajian = { id: absensi.pengajian };
 				existingAbsensiId = id;
 
-				// Reload jamaah data with proper filters to get the correct jamaah list
-				console.log('Loading jamaah data for edit with filters:', {
+				// Reload jamaah data with proper filters to get the LATEST jamaah list
+				console.log('Loading LATEST jamaah data for edit with filters:', {
 					kategori: tingkatArray,
 					kelompok: absensi.kelompok ? parseInt(absensi.kelompok) : null
 				});
 
-				// Reload jamaah data with filters
+				// Reload jamaah data with filters - always get fresh data from database
 				const filters = {};
 				if (tingkatArray.length > 0) {
 					filters.kategori = tingkatArray;
@@ -450,17 +477,19 @@
 					filters.kelompok = parseInt(absensi.kelompok);
 				}
 
+				// Force reload from database to get latest jamaah
 				const reloadedJamaahList = await JamaahService.getAllJamaah(filters);
 				jamaahList = reloadedJamaahList;
 
-				console.log('Reloaded jamaah for edit:', reloadedJamaahList.length, 'jamaah found');
+				console.log('Reloaded LATEST jamaah for edit:', reloadedJamaahList.length, 'jamaah found');
 
-				// Initialize absensi data for all jamaah
+				// Initialize absensi data for ALL current jamaah (including new ones)
 				initializeAbsensiData();
 
-				// Populate absensi data with existing detail
+				// Populate absensi data with existing detail (preserve existing attendance)
 				detailData.forEach(detail => {
-					if (detail.id_siswa) {
+					if (detail.id_siswa && absensiData[detail.id_siswa]) {
+						// Only populate if jamaah still exists in current filtered list
 						absensiData[detail.id_siswa] = {
 							jamaah_id: detail.id_siswa,
 							status_kehadiran: detail.status || '',
@@ -648,7 +677,7 @@
 								<span>Menyimpan...</span>
 							{:else}
 								<Save size={20} />
-								<span>Finalisasi & Kembali</span>
+								<span>Selesai & Kembali</span>
 							{/if}
 						</button>
 					</div>
