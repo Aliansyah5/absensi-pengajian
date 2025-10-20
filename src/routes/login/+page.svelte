@@ -5,7 +5,7 @@
 	import { DatabaseService } from '$lib/utils/supabase.js';
 	import { Eye, EyeOff, LogIn, AlertCircle, Database } from 'lucide-svelte';
 
-	let email = '';
+	let username = '';
 	let password = '';
 	let isLoading = false;
 	let isTesting = false;
@@ -27,8 +27,8 @@
 	});
 
 	async function handleLogin() {
-		if (!email || !password) {
-			error = 'Email dan password harus diisi';
+		if (!username || !password) {
+			error = 'Username dan password harus diisi';
 			return;
 		}
 
@@ -36,13 +36,13 @@
 		error = '';
 
 		try {
-			const result = await DatabaseService.login(email, password);
+			const result = await DatabaseService.login(username, password);
 
 			if (result.success) {
 				auth.login(result.user);
 				goto('/dashboard');
 			} else {
-				error = result.error || 'Login gagal. Periksa email dan password Anda.';
+				error = result.error || 'Login gagal. Periksa username dan password Anda.';
 			}
 		} catch (err) {
 			error = 'Terjadi kesalahan saat login. Silakan coba lagi.';
@@ -72,7 +72,10 @@
 			if (result.success) {
 				testResult = `✅ ${result.message} - Found ${result.data?.length || 0} users in database`;
 				if (result.data?.length > 0) {
-					testResult += `\nUsers: ${result.data.map(u => u.email).join(', ')}`;
+					testResult += `\n\nAvailable users:\n`;
+					result.data.forEach(u => {
+						testResult += `- Username: ${u.username || 'N/A'} (${u.full_name || u.email}) - Role: ${u.role}\n`;
+					});
 				}
 			} else {
 				testResult = `❌ ${result.message}: ${result.error}`;
@@ -120,17 +123,18 @@
 			{/if}
 
 			<form class="space-y-4" on:submit|preventDefault={handleLogin}>
-				<!-- Email Field -->
+				<!-- Username Field -->
 				<div>
-					<label for="email" class="form-label">Email</label>
+					<label for="username" class="form-label">Username</label>
 					<input
-						id="email"
-						type="email"
+						id="username"
+						type="text"
 						class="form-input"
-						bind:value={email}
-						placeholder="Masukkan email Anda"
+						bind:value={username}
+						placeholder="Masukkan username Anda"
 						disabled={isLoading}
 						on:keypress={handleKeyPress}
+						autocomplete="username"
 						required
 					/>
 				</div>
@@ -147,6 +151,7 @@
 							placeholder="Masukkan password Anda"
 							disabled={isLoading}
 							on:keypress={handleKeyPress}
+							autocomplete="current-password"
 							required
 						/>
 						<button
@@ -174,13 +179,6 @@
 						<span>Masuk</span>
 					{/if}
 				</button>
-
-				<!-- Test Result -->
-				{#if testResult}
-					<div class="p-3 bg-gray-50 rounded-xl border">
-						<pre class="text-xs text-gray-700 whitespace-pre-wrap">{testResult}</pre>
-					</div>
-				{/if}
 			</form>
 		</div>
 

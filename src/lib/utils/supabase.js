@@ -22,31 +22,28 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Database service functions
 export class DatabaseService {
   // User authentication functions
-  static async login(email, password) {
+  static async login(username, password) {
     try {
-      console.log("Trying to login with:", email, password);
+      console.log("Trying to login with username:", username);
       console.log("Supabase client configured:", !!supabase);
 
-      // First check if user exists in muser table
+      // Check if user exists in muser table using username
       const { data: userData, error: userError } = await supabase
         .from("muser")
         .select("*")
-        .eq("email", email)
+        .eq("username", username)
         .eq("active", 1)
         .single();
 
       console.log("Database query result:", { userData, userError });
 
       if (userError || !userData) {
-        throw new Error(
-          "User tidak ditemukan atau tidak aktif. Error: " +
-            (userError?.message || "No data")
-        );
+        throw new Error("Username tidak ditemukan atau tidak aktif");
       }
 
-      // Simple password check for demo (in production, use bcrypt or similar)
-      // For now, we'll accept 'password' as the password for all users
-      if (password !== "password") {
+      // Check password (plain text comparison)
+      // NOTE: In production, you should use bcrypt or similar for password hashing
+      if (password !== userData.password) {
         throw new Error("Password salah");
       }
 
@@ -55,7 +52,11 @@ export class DatabaseService {
       const mockUser = {
         id: userData.id,
         email: userData.email,
-        user_metadata: {},
+        username: userData.username,
+        user_metadata: {
+          full_name: userData.full_name,
+          role: userData.role,
+        },
         app_metadata: {},
         aud: "authenticated",
         created_at: userData.created_at,
@@ -83,6 +84,8 @@ export class DatabaseService {
         user: {
           id: userData.id,
           email: userData.email,
+          username: userData.username,
+          full_name: userData.full_name,
           profile: userData,
           supabaseUser: mockUser,
         },
@@ -109,7 +112,8 @@ export class DatabaseService {
       // Test simple query
       const { data, error } = await supabase
         .from("muser")
-        .select("id, email, full_name, role")
+        .select("id, username, email, full_name, role")
+        .eq("active", 1)
         .limit(5);
 
       console.log("Test query result:", { data, error });
