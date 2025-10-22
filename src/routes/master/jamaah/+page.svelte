@@ -107,7 +107,16 @@
 <AppHeader title="Master Jamaah" showBack={true} />
 
 <main class="app-content">
-	<CrudManager {service} {columns} {displayColumns} {foreignKeyLoaders} {filters} title="Jamaah" />
+	<CrudManager
+		{service}
+		{columns}
+		{displayColumns}
+		{foreignKeyLoaders}
+		{filters}
+		title="Jamaah"
+		showGenderIcon={true}
+		showCategoryBadge={true}
+	/>
 </main>
 
 <BottomNav />

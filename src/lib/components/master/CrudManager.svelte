@@ -10,7 +10,9 @@
 		AlertCircle,
 		ChevronLeft,
 		ChevronRight,
-		Eye
+		Eye,
+		User as MaleIcon,
+		UserRound as FemaleIcon
 	} from 'lucide-svelte';
 
 	export let service;
@@ -20,6 +22,8 @@
 	export let keyField = 'id';
 	export let foreignKeyLoaders = {}; // New prop for foreign key data loaders
 	export let filters = []; // New prop for filter configurations
+	export let showGenderIcon = false; // New prop to show gender icon in preview
+	export let showCategoryBadge = false; // New prop to show category badge in preview
 
 	let items = [];
 	let isLoading = true;
@@ -405,11 +409,31 @@
 						<div class="card-info">
 							<div class="card-number">#{(currentPage - 1) * itemsPerPage + index + 1}</div>
 							<div class="card-preview">
-								{#each tableColumns.filter(col => !['id', 'created_at', 'updated_at', 'user_modified'].includes(col.key)).slice(0, 2) as column}
-									<span class="preview-item">
-										{formatValue(item[column.key], column.type, column, item)}
-									</span>
-								{/each}
+								{#if showGenderIcon && item.jk}
+									<div class="gender-icon-container">
+										{#if item.jk === 'L'}
+											<div class="gender-icon male">
+												<MaleIcon size={16} />
+											</div>
+										{:else if item.jk === 'P'}
+											<div class="gender-icon female">
+												<FemaleIcon size={16} />
+											</div>
+										{/if}
+									</div>
+								{/if}
+								<div class="preview-content">
+									{#each tableColumns.filter(col => !['id', 'created_at', 'updated_at', 'user_modified', 'jk'].includes(col.key)).slice(0, 2) as column}
+										<span class="preview-item">
+											{formatValue(item[column.key], column.type, column, item)}
+										</span>
+									{/each}
+									{#if showCategoryBadge && item.mkategori}
+										<span class="category-badge">
+											{item.mkategori.category}
+										</span>
+									{/if}
+								</div>
 							</div>
 						</div>
 						<div class="card-toggle">
@@ -881,6 +905,38 @@
 
 	.card-preview {
 		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		overflow: hidden;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.gender-icon-container {
+		flex-shrink: 0;
+	}
+
+	.gender-icon {
+		width: 36px;
+		height: 36px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: white;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+	}
+
+	.gender-icon.male {
+		background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+	}
+
+	.gender-icon.female {
+		background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+	}
+
+	.preview-content {
+		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
 		overflow: hidden;
@@ -901,6 +957,21 @@
 		font-size: 0.75rem;
 		color: #6b7280;
 		font-weight: 500;
+	}
+
+	.category-badge {
+		display: inline-block;
+		padding: 0.25rem 0.75rem;
+		background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+		color: #0284c7;
+		font-size: 0.7rem;
+		font-weight: 600;
+		border-radius: 12px;
+		border: 1px solid #bae6fd;
+		margin-top: 0.25rem;
+		width: fit-content;
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
 	}
 
 	.card-toggle {
@@ -1444,6 +1515,15 @@
 		}
 
 		.card-preview {
+			gap: 0.5rem;
+		}
+
+		.gender-icon {
+			width: 32px;
+			height: 32px;
+		}
+
+		.preview-content {
 			gap: 0.125rem;
 		}
 
@@ -1453,6 +1533,11 @@
 
 		.preview-item:nth-child(2) {
 			font-size: 0.7rem;
+		}
+
+		.category-badge {
+			font-size: 0.65rem;
+			padding: 0.2rem 0.6rem;
 		}
 
 		.card-body {

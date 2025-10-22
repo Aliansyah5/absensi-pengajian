@@ -2,19 +2,41 @@
 	import { page } from '$app/stores';
 	import { Home, Users, CheckSquare, Settings, User } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
+	import { auth } from '$lib/stores/auth.js';
+	import { onMount } from 'svelte';
 
-	const menuItems = [
+	const allMenuItems = [
 		{ id: 'dashboard', label: 'Beranda', icon: Home, href: '/dashboard' },
 		{ id: 'jamaah', label: 'Jamaah', icon: Users, href: '/master/jamaah' },
 		{ id: 'absensi', label: 'Absensi', icon: CheckSquare, href: '/absensi-new' },
-		{ id: 'master', label: 'Master', icon: Settings, href: '/master' },
+		{ id: 'master', label: 'Master', icon: Settings, href: '/master', requireSuperAdmin: true },
 		{ id: 'profile', label: 'Profil', icon: User, href: '/profile' }
 	];
+
+	let userRole = 'user';
+	let menuItems = [];
 
 	$: currentPath = $page.url.pathname;
 
 	let innerWidth = 0;
 	$: isDesktop = innerWidth >= 768;
+
+	onMount(() => {
+		const unsubscribe = auth.subscribe(state => {
+			if (state.user?.profile?.role) {
+				userRole = state.user.profile.role;
+			}
+			// Filter menu items based on role
+			menuItems = allMenuItems.filter(item => {
+				if (item.requireSuperAdmin) {
+					return userRole === 'super_admin';
+				}
+				return true;
+			});
+		});
+
+		return unsubscribe;
+	});
 
 	function isActive(href) {
 		return currentPath === href || (href === '/dashboard' && currentPath === '/');
@@ -69,7 +91,7 @@
 	.nav-container {
 		display: flex;
 		align-items: center;
-		justify-around: space-around;
+		justify-content: space-around;
 		padding: 0.5rem 0;
 		min-height: 60px;
 	}
