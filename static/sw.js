@@ -1,11 +1,15 @@
-const CACHE_NAME = "absensi-pengajian-v1";
+const CACHE_NAME = "absensi-pengajian-v2";
 const urlsToCache = [
   "/",
   "/login",
   "/dashboard",
-  "/jamaah",
-  "/absensi",
+  "/master/jamaah",
+  "/absensi-new",
+  "/master",
   "/laporan",
+  "/laporan-jamaah",
+  "/laporan-ketertiban",
+  "/profile",
   "/manifest.json",
 ];
 

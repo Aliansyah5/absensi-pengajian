@@ -38,6 +38,11 @@
 	$: currentFormData = formData || localFormData;
 	$: currentFormData.tgl = selectedDate;
 
+	// Filter masjid berdasarkan kelompok yang dipilih
+	$: filteredMasjidList = currentFormData.kelompok
+		? masjidList.filter(m => m.id_kelompok === parseInt(currentFormData.kelompok))
+		: masjidList;
+
 	function handleSubmit() {
 		// Validate required fields
 		if (!currentFormData.pengajian) {
@@ -140,20 +145,28 @@
 
 				<div class="form-row">
 					<div class="form-group">
-						<label for="masjid">Tempat (Masjid)</label>
-						<select id="masjid" bind:value={currentFormData.tempat} required>
-							<option value="">Pilih Masjid</option>
-							{#each masjidList as masjid}
-								<option value={String(masjid.id)}>{masjid.nama_masjid}</option>
-							{/each}
-						</select>
-					</div>
-					<div class="form-group">
 						<label for="kelompok">Kelompok</label>
 						<select id="kelompok" bind:value={currentFormData.kelompok} required>
 							<option value="">Pilih Kelompok</option>
 							{#each kelompokList as kelompok}
 								<option value={String(kelompok.id)}>{kelompok.nama_kelompok}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="form-group">
+						<label for="masjid">Tempat (Masjid)</label>
+						<select id="masjid" bind:value={currentFormData.tempat} required disabled={!currentFormData.kelompok}>
+							<option value="">
+								{#if !currentFormData.kelompok}
+									Pilih Kelompok Dulu
+								{:else if filteredMasjidList.length === 0}
+									Tidak ada masjid untuk kelompok ini
+								{:else}
+									Pilih Masjid
+								{/if}
+							</option>
+							{#each filteredMasjidList as masjid}
+								<option value={String(masjid.id)}>{masjid.nama_masjid}</option>
 							{/each}
 						</select>
 					</div>

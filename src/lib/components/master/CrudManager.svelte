@@ -34,9 +34,15 @@
 	let foreignKeyOptions = {}; // Store loaded foreign key options
 	let filterValues = {}; // Store current filter values
 	let mounted = false;
+	let expandedCards = {}; // Track which cards are expanded
 
 	// Use displayColumns for table if provided, otherwise use columns
 	$: tableColumns = displayColumns || columns;
+
+	function toggleCard(id) {
+		expandedCards[id] = !expandedCards[id];
+		expandedCards = { ...expandedCards }; // Trigger reactivity
+	}
 
 	$: filteredItems = items.filter((item) => {
 		// Search filter
@@ -193,6 +199,18 @@
 	}
 
 	function formatValue(value, type, column, item) {
+		// Handle computed fields
+		if (column && column.computed && column.key === 'usia' && item.tgl_lahir) {
+			const birthDate = new Date(item.tgl_lahir);
+			const today = new Date();
+			let age = today.getFullYear() - birthDate.getFullYear();
+			const monthDiff = today.getMonth() - birthDate.getMonth();
+			if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+				age--;
+			}
+			return age >= 0 ? `${age} tahun` : '-';
+		}
+
 		if (!value) return '-';
 
 		// Handle foreign key display
@@ -379,56 +397,69 @@
 			{/if}
 		</div>
 	{:else}
-		<!-- Table -->
-		<div class="table-container">
-			<div class="table-responsive">
-				<table>
-					<thead>
-						<tr>
-							<th style="width: 60px;">No</th>
-							{#each tableColumns.filter(col => !['id', 'created_at', 'updated_at', 'user_modified'].includes(col.key)) as column}
-								<th>{column.label}</th>
-							{/each}
-							<th style="width: 120px;">Aksi</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each paginatedItems as item, index (item[keyField])}
-							<tr>
-								<td style="text-align: center; font-weight: 600; color: #6b7280;">
-									{(currentPage - 1) * itemsPerPage + index + 1}
-								</td>
-								{#each tableColumns.filter(col => !['id', 'created_at', 'updated_at', 'user_modified'].includes(col.key)) as column}
-									<td>{formatValue(item[column.key], column.type, column, item)}</td>
+		<!-- Card View (All Devices) -->
+		<div class="cards-container">
+			{#each paginatedItems as item, index (item[keyField])}
+				<div class="data-card {expandedCards[item[keyField]] ? 'expanded' : 'collapsed'}" style="animation-delay: {index * 0.05}s">
+					<div class="card-header" on:click={() => toggleCard(item[keyField])}>
+						<div class="card-info">
+							<div class="card-number">#{(currentPage - 1) * itemsPerPage + index + 1}</div>
+							<div class="card-preview">
+								{#each tableColumns.filter(col => !['id', 'created_at', 'updated_at', 'user_modified'].includes(col.key)).slice(0, 2) as column}
+									<span class="preview-item">
+										{formatValue(item[column.key], column.type, column, item)}
+									</span>
 								{/each}
-								<td class="actions-cell">
-									<button
-										class="btn-icon view"
-										on:click={() => openModal(item, 'view')}
-										title="Lihat {title}"
-									>
-										<Eye size={16} />
-									</button>
-									<button
-										class="btn-icon edit"
-										on:click={() => openModal(item, 'edit')}
-										title="Edit {title}"
-									>
-										<Pencil size={16} />
-									</button>
-									<button
-										class="btn-icon danger"
-										on:click={() => handleDelete(item[keyField])}
-										title="Hapus {title}"
-									>
-										<Trash2 size={16} />
-									</button>
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
+							</div>
+						</div>
+						<div class="card-toggle">
+							<button
+								class="btn-toggle"
+								type="button"
+								title="{expandedCards[item[keyField]] ? 'Tutup' : 'Buka'}"
+							>
+								<ChevronRight size={16} class="chevron {expandedCards[item[keyField]] ? 'rotated' : ''}" />
+							</button>
+						</div>
+					</div>
+					{#if expandedCards[item[keyField]]}
+						<div class="card-body">
+							{#each tableColumns.filter(col => !['id', 'created_at', 'updated_at', 'user_modified'].includes(col.key)) as column}
+								<div class="card-field">
+									<span class="field-label">{column.label}</span>
+									<span class="field-value">{formatValue(item[column.key], column.type, column, item)}</span>
+								</div>
+							{/each}
+							<div class="card-actions-bottom">
+								<button
+									class="btn-action view"
+									on:click|stopPropagation={() => openModal(item, 'view')}
+									title="Lihat {title}"
+								>
+									<Eye size={16} />
+									<span>Lihat</span>
+								</button>
+								<button
+									class="btn-action edit"
+									on:click|stopPropagation={() => openModal(item, 'edit')}
+									title="Edit {title}"
+								>
+									<Pencil size={16} />
+									<span>Edit</span>
+								</button>
+								<button
+									class="btn-action danger"
+									on:click|stopPropagation={() => handleDelete(item[keyField])}
+									title="Hapus {title}"
+								>
+									<Trash2 size={16} />
+									<span>Hapus</span>
+								</button>
+							</div>
+						</div>
+					{/if}
+				</div>
+			{/each}
 		</div>
 
 		<!-- Pagination -->
@@ -765,100 +796,270 @@
 		font-size: 0.875rem;
 	}
 
-	/* Table Container */
-	.table-container {
+	/* Cards Container */
+	.cards-container {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+		scroll-behavior: smooth;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.data-card {
 		background: white;
 		border-radius: 16px;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 		border: 1px solid #f1f5f9;
 		overflow: hidden;
-		margin-bottom: 1.5rem;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		animation: fadeInUp 0.3s ease-out;
+		-webkit-tap-highlight-color: transparent;
+		touch-action: manipulation;
 	}
 
-	.table-responsive {
-		overflow-x: auto;
+	@keyframes fadeInUp {
+		from {
+			opacity: 0;
+			transform: translateY(10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 
-	table {
-		width: 100%;
-		border-collapse: collapse;
+	.data-card.collapsed:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+		border-color: #3b82f6;
 	}
 
-	th {
+	.data-card.expanded {
+		border-color: #3b82f6;
+		box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+	}
+
+	.card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 1rem 1.25rem;
 		background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-		padding: 1.25rem 1.5rem;
-		text-align: left;
-		font-weight: 600;
-		color: #374151;
-		font-size: 0.875rem;
-		border-bottom: 2px solid #e5e7eb;
-		position: sticky;
-		top: 0;
-		z-index: 10;
-	}
-
-	td {
-		padding: 1.25rem 1.5rem;
-		border-bottom: 1px solid #f3f4f6;
-		color: #1f2937;
-		font-size: 0.875rem;
-		vertical-align: middle;
-	}
-
-	tr:hover {
-		background: #f8fafc;
-	}
-
-	.actions-cell {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.btn-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 36px;
-		height: 36px;
-		border: none;
-		border-radius: 8px;
 		cursor: pointer;
 		transition: all 0.2s ease;
-		background: #f3f4f6;
-		color: #6b7280;
+		user-select: none;
 	}
 
-	.btn-icon:hover {
-		transform: translateY(-1px);
-		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+	.data-card.expanded .card-header {
+		background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+		border-bottom: 1px solid #93c5fd;
 	}
 
-	.btn-icon.view {
-		background: #f0f9ff;
-		color: #0284c7;
-	}
-
-	.btn-icon.view:hover {
+	.card-header:active {
 		background: #e0f2fe;
 	}
 
-	.btn-icon.edit {
-		background: #dbeafe;
+	.card-info {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.card-number {
+		font-size: 0.875rem;
+		font-weight: 700;
+		color: #3b82f6;
+		background: white;
+		padding: 0.375rem 0.875rem;
+		border-radius: 8px;
+		border: 1px solid #dbeafe;
+		flex-shrink: 0;
+	}
+
+	.card-preview {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		overflow: hidden;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.preview-item {
+		font-size: 0.875rem;
+		color: #1f2937;
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.preview-item:nth-child(2) {
+		font-size: 0.75rem;
+		color: #6b7280;
+		font-weight: 500;
+	}
+
+	.card-toggle {
+		flex-shrink: 0;
+	}
+
+	.btn-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border: 2px solid #3b82f6;
+		background: white;
+		border-radius: 50%;
+		cursor: pointer;
+		transition: all 0.2s ease;
 		color: #3b82f6;
 	}
 
-	.btn-icon.edit:hover {
+	.btn-toggle:hover {
+		background: #eff6ff;
+		transform: scale(1.1);
+	}
+
+	.btn-toggle:active {
+		transform: scale(0.95);
+	}
+
+	.chevron {
+		transition: transform 0.3s ease;
+	}
+
+	.chevron.rotated {
+		transform: rotate(90deg);
+	}
+
+	.card-body {
+		padding: 1.25rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.875rem;
+		animation: slideDown 0.3s ease;
+		background: #fafbfc;
+	}
+
+	@keyframes slideDown {
+		from {
+			opacity: 0;
+			max-height: 0;
+			padding-top: 0;
+			padding-bottom: 0;
+		}
+		to {
+			opacity: 1;
+			max-height: 2000px;
+			padding-top: 1.25rem;
+			padding-bottom: 1.25rem;
+		}
+	}
+
+	.card-actions-bottom {
+		display: flex;
+		gap: 0.75rem;
+		padding-top: 0.75rem;
+		margin-top: 0.75rem;
+		border-top: 2px solid #e5e7eb;
+	}
+
+	.btn-action {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		border: none;
+		border-radius: 10px;
+		font-size: 0.875rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		-webkit-tap-highlight-color: transparent;
+		touch-action: manipulation;
+	}
+
+	.btn-action:active {
+		transform: scale(0.95);
+	}
+
+	.btn-action.view {
+		background: #f0f9ff;
+		color: #0284c7;
+		border: 1px solid #bae6fd;
+	}
+
+	.btn-action.view:hover {
+		background: #e0f2fe;
+		border-color: #7dd3fc;
+	}
+
+	.btn-action.edit {
+		background: #dbeafe;
+		color: #1d4ed8;
+		border: 1px solid #93c5fd;
+	}
+
+	.btn-action.edit:hover {
 		background: #bfdbfe;
+		border-color: #60a5fa;
 	}
 
-	.btn-icon.danger {
+	.btn-action.danger {
 		background: #fee2e2;
-		color: #ef4444;
+		color: #dc2626;
+		border: 1px solid #fca5a5;
 	}
 
-	.btn-icon.danger:hover {
+	.btn-action.danger:hover {
 		background: #fecaca;
+		border-color: #f87171;
+	}
+
+	.card-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 0.75rem;
+		background: #f9fafb;
+		border-radius: 8px;
+		border-left: 3px solid #e5e7eb;
+		transition: all 0.2s ease;
+	}
+
+	.card-field:hover {
+		background: #f3f4f6;
+		border-left-color: #3b82f6;
+	}
+
+	.field-label {
+		font-size: 0.7rem;
+		font-weight: 700;
+		color: #6b7280;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.field-value {
+		font-size: 0.875rem;
+		color: #1f2937;
+		font-weight: 500;
+		word-break: break-word;
+		line-height: 1.5;
+	}
+
+	/* Empty field value */
+	.field-value:empty::before {
+		content: '-';
+		color: #9ca3af;
 	}
 
 	/* Pagination */
@@ -1160,14 +1361,6 @@
 			font-size: 1.5rem;
 		}
 
-		.table-container {
-			border-radius: 12px;
-		}
-
-		th, td {
-			padding: 1rem;
-		}
-
 		.modal-content {
 			margin: 1rem;
 		}
@@ -1189,12 +1382,42 @@
 
 		.pagination {
 			flex-wrap: wrap;
+			padding: 1rem;
+		}
+
+		.pagination button {
+			width: 36px;
+			height: 36px;
+		}
+
+		.pagination span {
+			font-size: 0.8rem;
 		}
 	}
 
 	@media (max-width: 480px) {
 		.crud-manager {
 			padding: 0.5rem;
+		}
+
+		.crud-header {
+			padding: 1rem;
+		}
+
+		.header-title h1 {
+			font-size: 1.25rem;
+		}
+
+		.btn-primary,
+		.btn-secondary {
+			font-size: 0.8rem;
+			padding: 0.75rem 1.25rem;
+			height: 44px;
+		}
+
+		.search-container input {
+			font-size: 0.8rem;
+			height: 44px;
 		}
 
 		.actions-cell {
@@ -1205,6 +1428,87 @@
 			right: 0.5rem;
 			left: 0.5rem;
 			max-width: none;
+			font-size: 0.8rem;
+		}
+
+		.data-card {
+			border-radius: 12px;
+		}
+
+		.card-header {
+			padding: 0.875rem 1rem;
+		}
+
+		.card-info {
+			gap: 0.75rem;
+		}
+
+		.card-preview {
+			gap: 0.125rem;
+		}
+
+		.preview-item {
+			font-size: 0.8rem;
+		}
+
+		.preview-item:nth-child(2) {
+			font-size: 0.7rem;
+		}
+
+		.card-body {
+			padding: 1rem;
+			gap: 0.75rem;
+		}
+
+		.card-actions-bottom {
+			flex-direction: column;
+			gap: 0.5rem;
+		}
+
+		.btn-action {
+			font-size: 0.8rem;
+			padding: 0.75rem;
+		}
+
+		.card-field {
+			padding: 0.625rem;
+		}
+
+		.field-label {
+			font-size: 0.65rem;
+		}
+
+		.field-value {
+			font-size: 0.8rem;
+		}
+
+		.btn-icon-small {
+			width: 30px;
+			height: 30px;
+		}
+
+		.card-number {
+			font-size: 0.8rem;
+			padding: 0.25rem 0.75rem;
+		}
+
+		.stats-bar {
+			padding: 0.875rem 1rem;
+			font-size: 0.8rem;
+		}
+
+		.filters-section {
+			padding: 1rem;
+		}
+
+		.modal-content {
+			max-width: 100%;
+			border-radius: 16px 16px 0 0;
+			max-height: 95vh;
+		}
+
+		.modal-header h2 {
+			font-size: 1.125rem;
 		}
 	}
 </style>

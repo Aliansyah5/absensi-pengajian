@@ -704,8 +704,7 @@ export class HadistService extends MasterDataService {
       const { data, error } = await supabase
         .from("mhadist")
         .select("*")
-        .eq("active", 1)
-        .order("created_at", { ascending: false });
+        .eq("active", 1);
 
       if (error) {
         console.error("Error fetching hadist:", error);
@@ -752,8 +751,7 @@ export class AlQuranService extends MasterDataService {
       const { data, error } = await supabase
         .from("malquran")
         .select("*")
-        .eq("active", 1)
-        .order("created_at", { ascending: false });
+        .eq("active", 1);
 
       if (error) {
         console.error("Error fetching alquran:", error);

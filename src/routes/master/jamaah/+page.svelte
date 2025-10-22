@@ -49,10 +49,10 @@
 
 	const displayColumns = [
 		{ key: 'nama', label: 'Nama' },
-		{ key: 'jk', label: 'JK' },
+		{ key: 'usia', label: 'Usia', computed: true },
+		{ key: 'id_kategori', label: 'Kategori', foreignKey: 'kategori' },
 		{ key: 'id_kelompok', label: 'Kelompok', foreignKey: 'kelompok' },
-		{ key: 'email', label: 'Email' },
-		{ key: 'telp_murid', label: 'Telepon' }
+		{ key: 'jk', label: 'JK' }
 	];
 
 	const filters = [

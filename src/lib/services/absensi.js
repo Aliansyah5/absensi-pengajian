@@ -66,7 +66,8 @@ export class AbsensiService {
 				mpengajian (nama_pengajian),
 				mmasjid (nama_masjid),
 				malquran (nama_surat),
-				mhadist (nama_hadist)
+				mhadist (nama_hadist),
+				dabsensi (id)
 			`
       )
       .eq("active", 1)
@@ -1169,7 +1170,6 @@ export class AbsensiService {
         penasehat: formData.penasehat || "",
         infaq: parseFloat(formData.infaq) || 0,
         active: 1,
-        user_created: userEmail,
         user_modified: userEmail,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

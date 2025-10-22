@@ -38,7 +38,7 @@
 		const unsubscribe = auth.subscribe(async (state) => {
 			if (!state.isLoading) {
 				if (!state.isAuthenticated) {
-					goto('/login');
+					goto('/login', { replaceState: true });
 					return;
 				}
 

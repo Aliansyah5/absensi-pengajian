@@ -54,6 +54,19 @@
 	$: isDesktop = innerWidth >= 768;
 	$: formData.tgl = selectedDate; // Keep date synchronized
 
+	// Auto-fill masjid (tempat) based on selected kelompok
+	$: if (formData.kelompok) {
+		const selectedKelompok = kelompokList.find(k => k.id === parseInt(formData.kelompok));
+		if (selectedKelompok) {
+			// Find masjid that belongs to this kelompok
+			const masjidForKelompok = masjidList.find(m => m.id_kelompok === selectedKelompok.id);
+			if (masjidForKelompok) {
+				formData.tempat = String(masjidForKelompok.id);
+				console.log('Auto-filled masjid:', masjidForKelompok.nama_masjid, 'for kelompok:', selectedKelompok.nama_kelompok);
+			}
+		}
+	}
+
 	// Filter jamaah by selected tingkat (kategori) and kelompok
 	$: filteredJamaahByFilters = jamaahList.filter(j => {
 		// Filter by tingkat (kategori)
@@ -110,11 +123,8 @@
 			console.log('Loaded kategori data:', kategoriResult);
 			console.log('Loaded kelompok data:', kelompokResult);
 
-			// Set default pengajian if none selected
-			if (!selectedPengajian && pengajianList.length > 0) {
-				selectedPengajian = { id: pengajianList[0].id };
-				formData.pengajian = pengajianList[0].id;
-			}
+			// Don't auto-select pengajian - let user choose
+			// selectedPengajian and formData.pengajian remain null
 
 			// Initialize absensi data
 			initializeAbsensiData();

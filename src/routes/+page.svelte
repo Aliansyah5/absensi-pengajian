@@ -9,9 +9,9 @@
 		const unsubscribe = auth.subscribe(state => {
 			if (!state.isLoading) {
 				if (state.isAuthenticated) {
-					goto('/dashboard');
+					goto('/dashboard', { replaceState: true });
 				} else {
-					goto('/login');
+					goto('/login', { replaceState: true });
 				}
 			}
 		});
