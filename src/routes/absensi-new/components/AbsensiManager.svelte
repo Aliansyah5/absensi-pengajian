@@ -143,12 +143,12 @@
 		jamaahToProcess.forEach(jamaah => {
 			absensiData[jamaah.id] = {
 				jamaah_id: jamaah.id,
-				status_kehadiran: '',
+				status_kehadiran: 'A', // Default to Alpha (Absent)
 				keterangan: ''
 			};
 		});
 
-		console.log('Initialized absensi data for', jamaahToProcess.length, 'jamaah');
+		console.log('Initialized absensi data for', jamaahToProcess.length, 'jamaah with default Alpha status');
 	}
 
 	function updateAbsensiDataForFilteredJamaah() {
@@ -164,10 +164,10 @@
 				// Keep existing data if jamaah was already in the list
 				absensiData[jamaah.id] = existingData[jamaah.id];
 			} else {
-				// Initialize new jamaah
+				// Initialize new jamaah with default Alpha status
 				absensiData[jamaah.id] = {
 					jamaah_id: jamaah.id,
-					status_kehadiran: '',
+					status_kehadiran: 'A', // Default to Alpha (Absent)
 					keterangan: ''
 				};
 			}
@@ -206,10 +206,10 @@
 					// Keep existing attendance data if jamaah was already in the list
 					absensiData[jamaah.id] = existingData[jamaah.id];
 				} else {
-					// Initialize new jamaah (yang baru ditambahkan)
+					// Initialize new jamaah with default Alpha status
 					absensiData[jamaah.id] = {
 						jamaah_id: jamaah.id,
-						status_kehadiran: '',
+						status_kehadiran: 'A', // Default to Alpha (Absent)
 						keterangan: ''
 					};
 				}
@@ -423,6 +423,7 @@
 	}
 
 	async function loadAbsensiForEdit(id) {
+		isLoading = true; // Show loading indicator
 		try {
 			const absensi = await AbsensiService.getById(id);
 			const detailData = await AbsensiService.getAbsensiDetail(id);
@@ -467,7 +468,7 @@
 				existingAbsensiId = id;
 
 				// Reload jamaah data with proper filters to get the LATEST jamaah list
-				console.log('Loading LATEST jamaah data for edit with filters:', {
+				console.log('[Edit Mode] Loading LATEST jamaah data with filters:', {
 					kelompok: absensi.kelompok,
 					tingkat: tingkatArray
 				});
@@ -480,38 +481,48 @@
 					);
 					jamaahList = reloadedJamaahList;
 
-					console.log('Reloaded LATEST jamaah for edit:', reloadedJamaahList.length, 'jamaah found');
+					console.log('[Edit Mode] Reloaded LATEST jamaah:', reloadedJamaahList.length, 'jamaah found');
+
+					// Wait for the next tick to ensure jamaahList is fully updated
+					await new Promise(resolve => setTimeout(resolve, 100));
+
+					// Initialize absensi data for ALL current jamaah (including new ones)
+					initializeAbsensiData();
+
+					// Populate absensi data with existing detail (preserve existing attendance)
+					detailData.forEach(detail => {
+						if (detail.id_siswa && absensiData[detail.id_siswa]) {
+							// Only populate if jamaah still exists in current filtered list
+							absensiData[detail.id_siswa] = {
+								jamaah_id: detail.id_siswa,
+								status_kehadiran: detail.status || 'A', // Default to Alpha if empty
+								keterangan: detail.keterangan || ''
+							};
+						}
+					});
+
+					console.log('[Edit Mode] Populated absensi data:', Object.keys(absensiData).length, 'entries');
+					console.log('[Edit Mode] Jamaah list length:', jamaahList.length);
+					console.log('[Edit Mode] Filtered laki-laki:', filteredJamaahLaki.length);
+					console.log('[Edit Mode] Filtered perempuan:', filteredJamaahPerempuan.length);
+
+					// Switch to form view and open check-absensi tab
+					currentView = 'form-pengajian';
+					activeTab = 'check-absensi';
+
+					showMessage('success', 'Data absensi berhasil dimuat untuk diedit');
 				} else {
-					console.warn('No kelompok found in absensi data, cannot load jamaah');
+					console.error('[Edit Mode] No kelompok found in absensi data');
+					showMessage('error', 'Data kelompok tidak ditemukan');
 					jamaahList = [];
+					initializeAbsensiData();
 				}
-
-				// Initialize absensi data for ALL current jamaah (including new ones)
-				initializeAbsensiData();
-
-				// Populate absensi data with existing detail (preserve existing attendance)
-				detailData.forEach(detail => {
-					if (detail.id_siswa && absensiData[detail.id_siswa]) {
-						// Only populate if jamaah still exists in current filtered list
-						absensiData[detail.id_siswa] = {
-							jamaah_id: detail.id_siswa,
-							status_kehadiran: detail.status || '',
-							keterangan: detail.keterangan || ''
-						};
-					}
-				});
-
-				console.log('Populated absensi data for edit:', Object.keys(absensiData).length, 'entries');
-
-				// Switch to form view and open check-absensi tab
-				currentView = 'form-pengajian';
-				activeTab = 'check-absensi';
-
-				showMessage('success', 'Data absensi berhasil dimuat untuk diedit');
 			}
 		} catch (error) {
-			console.error('Error loading absensi for edit:', error);
+			console.error('[Edit Mode] Error loading absensi:', error);
 			showMessage('error', 'Gagal memuat data absensi untuk diedit');
+		} finally {
+			isLoading = false; // Hide loading indicator
 		}
 	}	function goBackToList() {
 		currentView = 'list';
