@@ -8,7 +8,7 @@
 	import {
 		User, Mail, Shield, LogOut, Settings, Bell, HelpCircle,
 		ExternalLink, Edit, Calendar, MapPin, Phone, Globe,
-		Info, Smartphone, Monitor, Database, AlertCircle
+		Info, Smartphone, Monitor, Database, AlertCircle, Lock, Key
 	} from 'lucide-svelte';
 
 	let user = null;
@@ -77,8 +77,85 @@
 		}
 	}
 
-	function handleEditProfile() {
-		goto('/profile/edit');
+	let showChangePassword = false;
+	let passwordData = {
+		oldPassword: '',
+		newPassword: '',
+		confirmPassword: ''
+	};
+	let passwordError = '';
+	let isChangingPassword = false;
+
+	function handleChangePassword() {
+		showChangePassword = true;
+		passwordError = '';
+		passwordData = {
+			oldPassword: '',
+			newPassword: '',
+			confirmPassword: ''
+		};
+	}
+
+	async function submitChangePassword() {
+		passwordError = '';
+
+		// Validation
+		if (!passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+			passwordError = 'Semua field harus diisi';
+			return;
+		}
+
+		if (passwordData.newPassword.length < 6) {
+			passwordError = 'Password baru minimal 6 karakter';
+			return;
+		}
+
+		if (passwordData.newPassword !== passwordData.confirmPassword) {
+			passwordError = 'Password baru dan konfirmasi tidak cocok';
+			return;
+		}
+
+		isChangingPassword = true;
+
+		try {
+			// Get stored user credentials
+			const storedUser = localStorage.getItem('auth_user');
+			if (!storedUser) {
+				throw new Error('User tidak ditemukan');
+			}
+
+			const userData = JSON.parse(storedUser);
+
+			// Verify old password
+			if (userData.profile.password !== passwordData.oldPassword) {
+				throw new Error('Password lama tidak sesuai');
+			}
+
+			// Update password in database
+			const { data, error } = await supabase
+				.from('muser')
+				.update({ password: passwordData.newPassword })
+				.eq('username', userData.profile.username);
+
+			if (error) throw error;
+
+			// Update localStorage
+			userData.profile.password = passwordData.newPassword;
+			localStorage.setItem('auth_user', JSON.stringify(userData));
+
+			alert('Password berhasil diubah!');
+			showChangePassword = false;
+			passwordData = {
+				oldPassword: '',
+				newPassword: '',
+				confirmPassword: ''
+			};
+		} catch (error) {
+			console.error('Change password error:', error);
+			passwordError = error.message || 'Gagal mengubah password';
+		} finally {
+			isChangingPassword = false;
+		}
 	}
 
 	function handleSettings() {
@@ -95,10 +172,10 @@
 
 	const menuItems = [
 		{
-			icon: Edit,
-			title: 'Edit Profil',
-			description: 'Ubah informasi pribadi dan kontak',
-			action: handleEditProfile,
+			icon: Key,
+			title: 'Change Password',
+			description: 'Ubah password akun Anda',
+			action: handleChangePassword,
 			color: 'text-blue-600'
 		},
 		{
@@ -162,9 +239,6 @@
 						<div class="profile-avatar">
 							<User size={isDesktop ? 40 : 32} />
 						</div>
-						<button class="edit-avatar-btn" on:click={handleEditProfile}>
-							<Edit size={14} />
-						</button>
 					</div>
 
 					<div class="profile-info">
@@ -185,9 +259,9 @@
 
 					{#if isDesktop}
 						<div class="profile-actions">
-							<button class="action-btn primary" on:click={handleEditProfile}>
-								<Edit size={16} />
-								Edit Profil
+							<button class="action-btn primary" on:click={handleChangePassword}>
+								<Key size={16} />
+								Change Password
 							</button>
 						</div>
 					{/if}
@@ -243,31 +317,6 @@
 					</div>
 				</div>
 			</div>
-
-			<!-- Menu Options Section -->
-			<!-- <div class="section">
-				<h3 class="section-title">Pengaturan & Aksi</h3>
-				<div class="menu-list">
-					{#each menuItems as item, index}
-						<button
-							class="menu-item"
-							class:desktop-layout={isDesktop}
-							on:click={item.action}
-						>
-							<div class="menu-icon {item.color}">
-								<svelte:component this={item.icon} size={20} />
-							</div>
-							<div class="menu-content">
-								<div class="menu-title">{item.title}</div>
-								<div class="menu-description">{item.description}</div>
-							</div>
-							<div class="menu-arrow">
-								<ExternalLink size={16} />
-							</div>
-						</button>
-					{/each}
-				</div>
-			</div> -->
 
 			<!-- App Information Section -->
 			<div class="section">
@@ -344,6 +393,90 @@
 	{/if}
 </main>
 
+<!-- Change Password Modal -->
+{#if showChangePassword}
+	<div class="modal-overlay"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="change-password-modal-title"
+		tabindex="-1"
+		on:click={() => showChangePassword = false}
+		on:keydown={(e) => e.key === 'Escape' && (showChangePassword = false)}>
+		<div class="modal-content modal-password"
+			on:click|stopPropagation>
+			<div class="modal-header">
+				<Key size={24} class="modal-icon password-icon" />
+				<h3 id="change-password-modal-title">Change Password</h3>
+			</div>
+			<div class="modal-body">
+				<form on:submit|preventDefault={submitChangePassword}>
+					<div class="form-group">
+						<label for="old-password">Password Lama</label>
+						<div class="input-with-icon">
+							<Lock size={18} class="input-icon" />
+							<input
+								type="password"
+								id="old-password"
+								bind:value={passwordData.oldPassword}
+								placeholder="Masukkan password lama"
+								disabled={isChangingPassword}
+							/>
+						</div>
+					</div>
+
+					<div class="form-group">
+						<label for="new-password">Password Baru</label>
+						<div class="input-with-icon">
+							<Key size={18} class="input-icon" />
+							<input
+								type="password"
+								id="new-password"
+								bind:value={passwordData.newPassword}
+								placeholder="Masukkan password baru (min. 6 karakter)"
+								disabled={isChangingPassword}
+							/>
+						</div>
+					</div>
+
+					<div class="form-group">
+						<label for="confirm-password">Konfirmasi Password Baru</label>
+						<div class="input-with-icon">
+							<Key size={18} class="input-icon" />
+							<input
+								type="password"
+								id="confirm-password"
+								bind:value={passwordData.confirmPassword}
+								placeholder="Konfirmasi password baru"
+								disabled={isChangingPassword}
+							/>
+						</div>
+					</div>
+
+					{#if passwordError}
+						<div class="error-message">
+							<AlertCircle size={16} />
+							{passwordError}
+						</div>
+					{/if}
+				</form>
+			</div>
+			<div class="modal-actions">
+				<button class="cancel-btn" on:click={() => showChangePassword = false} disabled={isChangingPassword}>
+					Batal
+				</button>
+				<button class="confirm-btn password-confirm" on:click={submitChangePassword} disabled={isChangingPassword}>
+					{#if isChangingPassword}
+						<div class="btn-spinner"></div>
+						Mengubah...
+					{:else}
+						Ubah Password
+					{/if}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <!-- Logout Confirmation Modal -->
 {#if showLogoutConfirm}
 	<div class="modal-overlay"
@@ -381,14 +514,14 @@
 
 <style>
 	.app-content {
-		min-height: calc(100vh - 64px);
-		background: #f8fafc;
-		padding-bottom: 100px;
+		min-height: calc(100vh - 120px);
+		background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+		padding: 1rem 1rem 100px 1rem;
 	}
 
 	.app-content.desktop {
-		padding-bottom: 2rem;
-		max-width: 1000px;
+		padding: 2rem 2rem 2rem 2rem;
+		max-width: 1200px;
 		margin: 0 auto;
 	}
 
@@ -426,11 +559,7 @@
 	}
 
 	.profile-container {
-		padding: 1.5rem 1rem;
-	}
-
-	.app-content.desktop .profile-container {
-		padding: 2rem;
+		max-width: 100%;
 	}
 
 	/* Profile Header */
@@ -477,29 +606,6 @@
 		justify-content: center;
 		color: white;
 		box-shadow: 0 8px 25px rgba(14, 165, 233, 0.3);
-	}
-
-	.edit-avatar-btn {
-		position: absolute;
-		bottom: -8px;
-		right: -8px;
-		width: 28px;
-		height: 28px;
-		background: white;
-		border: 2px solid #0ea5e9;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		color: #0ea5e9;
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.edit-avatar-btn:hover {
-		background: #0ea5e9;
-		color: white;
-		transform: scale(1.1);
 	}
 
 	.profile-info {
@@ -748,11 +854,6 @@
 		transition: all 0.2s ease;
 	}
 
-	.menu-item:hover .menu-arrow {
-		color: #0ea5e9;
-		transform: translateX(2px);
-	}
-
 	/* App Info */
 	.app-info-card {
 		background: white;
@@ -887,6 +988,10 @@
 		box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 	}
 
+	.modal-content.modal-password {
+		max-width: 450px;
+	}
+
 	.modal-header {
 		display: flex;
 		align-items: center;
@@ -897,6 +1002,10 @@
 
 	.modal-icon {
 		color: #ef4444;
+	}
+
+	.modal-icon.password-icon {
+		color: #0ea5e9;
 	}
 
 	.modal-header h3 {
@@ -963,6 +1072,17 @@
 		cursor: not-allowed;
 	}
 
+	/* Override for Change Password button */
+	.confirm-btn.password-confirm {
+		background: #0ea5e9;
+		border-color: #0ea5e9;
+	}
+
+	.confirm-btn.password-confirm:hover:not(:disabled) {
+		background: #0284c7;
+		border-color: #0284c7;
+	}
+
 	.btn-spinner {
 		width: 16px;
 		height: 16px;
@@ -972,10 +1092,70 @@
 		animation: spin 1s linear infinite;
 	}
 
+	/* Form Styles for Password Change */
+	.form-group {
+		margin-bottom: 1.25rem;
+	}
+
+	.form-group label {
+		display: block;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: #374151;
+		margin-bottom: 0.5rem;
+	}
+
+	.input-with-icon {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	.input-icon {
+		position: absolute;
+		left: 1rem;
+		color: #9ca3af;
+		pointer-events: none;
+	}
+
+	.input-with-icon input {
+		width: 100%;
+		padding: 0.75rem 1rem 0.75rem 3rem;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		font-size: 0.875rem;
+		transition: all 0.2s ease;
+	}
+
+	.input-with-icon input:focus {
+		outline: none;
+		border-color: #0ea5e9;
+		box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+	}
+
+	.input-with-icon input:disabled {
+		background: #f9fafb;
+		cursor: not-allowed;
+		opacity: 0.6;
+	}
+
+	.error-message {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		border-radius: 8px;
+		color: #dc2626;
+		font-size: 0.875rem;
+		margin-top: 1rem;
+	}
+
 	/* Mobile Responsive */
 	@media (max-width: 640px) {
-		.profile-container {
-			padding: 1rem;
+		.app-content {
+			padding: 1rem 1rem 100px 1rem;
 		}
 
 		.profile-card {
