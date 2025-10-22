@@ -13,6 +13,7 @@
 
 	let isLoading = true;
 	let innerWidth = 0;
+	let userRole = 'user';
 	let stats = {
 		total_jamaah: 0,
 		total_putra: 0,
@@ -40,6 +41,18 @@
 				if (!state.isAuthenticated) {
 					goto('/login', { replaceState: true });
 					return;
+				}
+
+				// Get user role from localStorage
+				const authUser = localStorage.getItem('auth_user');
+				if (authUser) {
+					try {
+						const parsedUser = JSON.parse(authUser);
+						userRole = parsedUser?.profile?.role || 'user';
+						console.log('[Dashboard] User role:', userRole);
+					} catch (e) {
+						console.error('Error parsing auth_user:', e);
+					}
 				}
 
 				// Load dashboard data
@@ -124,7 +137,8 @@
 			href: '/master',
 			color: 'bg-purple-500',
 			description: 'Kelola data master',
-			gradient: 'from-purple-500 to-purple-600'
+			gradient: 'from-purple-500 to-purple-600',
+			requireSuperAdmin: true // Only visible for super_admin
 		},
 		{
 			title: 'Laporan Database Jamaah',
@@ -151,6 +165,14 @@
 			gradient: 'from-pink-500 to-pink-600'
 		}
 	];
+
+	// Filter quick actions based on user role
+	$: filteredQuickActions = quickActions.filter(action => {
+		if (action.requireSuperAdmin) {
+			return userRole === 'super_admin';
+		}
+		return true;
+	});
 
 	function handleNotificationClick() {
 		// Handle notification click
@@ -197,7 +219,7 @@
 			<div class="stats-section">
 				<h2 class="section-title">Ringkasan Data</h2>
 				<div class="stats-grid" class:desktop-grid={isDesktop}>
-					<div class="stat-card primary">
+                    <div class="stat-card primary">
 						<div class="stat-icon">
 							<Users size={24} />
 						</div>
@@ -207,7 +229,7 @@
 						</div>
 					</div>
 
-					<div class="stat-card success">
+                    <div class="stat-card success">
 						<div class="stat-icon">
 							<TrendingUp size={24} />
 						</div>
@@ -217,27 +239,26 @@
 						</div>
 					</div>
 
-					{#if isDesktop}
-						<div class="stat-card info">
-							<div class="stat-icon">
-                                <User size={24} />
-							</div>
-							<div class="stat-info">
-								<div class="stat-number">{stats.total_putra}</div>
-								<div class="stat-label">Jamaah Laki Laki</div>
-							</div>
+					<div class="stat-card putra">
+						<div class="stat-icon">
+							<User size={24} />
 						</div>
+						<div class="stat-info">
+							<div class="stat-number">{stats.total_putra}</div>
+							<div class="stat-label">Jamaah Laki-laki</div>
+						</div>
+					</div>
 
-						<div class="stat-card warning">
-							<div class="stat-icon">
-								     <User size={24} />
-							</div>
-							<div class="stat-info">
-								<div class="stat-number">{stats.total_putri}</div>
-								<div class="stat-label">Jamaah Perempuan</div>
-							</div>
+					<div class="stat-card putri">
+						<div class="stat-icon">
+							<User size={24} />
 						</div>
-					{/if}
+						<div class="stat-info">
+							<div class="stat-number">{stats.total_putri}</div>
+							<div class="stat-label">Jamaah Perempuan</div>
+						</div>
+					</div>
+
 				</div>
 			</div>
 
@@ -315,7 +336,7 @@
 			<div class="actions-section">
 				<h2 class="section-title">Menu Utama</h2>
 				<div class="actions-grid" class:desktop-grid={isDesktop}>
-					{#each quickActions as action}
+					{#each filteredQuickActions as action}
 						<a href={action.href} class="action-card">
 							<div class="action-icon bg-gradient-to-br {action.gradient}">
 								<svelte:component this={action.icon} size={24} />
@@ -449,7 +470,15 @@
 	}
 
 	.stat-card.primary .stat-icon {
-		background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+		background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+	}
+
+	.stat-card.putra .stat-icon {
+		background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+	}
+
+	.stat-card.putri .stat-icon {
+		background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
 	}
 
 	.stat-card.success .stat-icon {

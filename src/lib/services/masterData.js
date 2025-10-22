@@ -77,7 +77,10 @@ export class MasterDataService {
         }
       }
 
-      if (!currentUser) return "guest";
+      if (!currentUser) {
+        console.log("[getUserRole] No current user found");
+        return "guest";
+      }
 
       // Get role from muser table
       const { data, error } = await supabase
@@ -92,10 +95,95 @@ export class MasterDataService {
         return "user";
       }
 
+      console.log(
+        "[getUserRole] User email:",
+        currentUser.email,
+        "Role:",
+        data?.role
+      );
       return data?.role || "user";
     } catch (error) {
       console.error("Error getting user role:", error);
       return "user";
+    }
+  }
+
+  /**
+   * Get user's kelompok access (returns array of kelompok IDs)
+   */
+  static async getUserKelompok() {
+    try {
+      // First try to get user from localStorage auth
+      if (typeof window !== "undefined") {
+        const authUser = localStorage.getItem("auth_user");
+        console.log(
+          "[getUserKelompok] Raw auth_user from localStorage:",
+          authUser
+        );
+
+        if (authUser) {
+          try {
+            const parsedUser = JSON.parse(authUser);
+            console.log("[getUserKelompok] Parsed user:", parsedUser);
+            console.log("[getUserKelompok] User profile:", parsedUser?.profile);
+            console.log(
+              "[getUserKelompok] User kelompok field:",
+              parsedUser?.profile?.kelompok
+            );
+
+            if (parsedUser?.profile?.kelompok) {
+              // Parse kelompok string: "1,2,3" -> [1, 2, 3]
+              const kelompokStr = parsedUser.profile.kelompok.toString();
+              const kelompokArray = kelompokStr
+                .split(",")
+                .map((k) => parseInt(k.trim()))
+                .filter((k) => !isNaN(k));
+
+              console.log(
+                "[getUserKelompok] Parsed kelompok array:",
+                kelompokArray
+              );
+              return kelompokArray;
+            } else {
+              console.log(
+                "[getUserKelompok] No kelompok field found in profile"
+              );
+            }
+          } catch (e) {
+            console.log("Error parsing auth user:", e);
+          }
+        }
+      }
+
+      // Fallback: Try to get from Supabase
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return [];
+
+      // Get kelompok from muser table
+      const { data, error } = await supabase
+        .from("muser")
+        .select("kelompok")
+        .eq("email", user.email)
+        .eq("active", 1)
+        .single();
+
+      if (error || !data?.kelompok) {
+        console.error("Error getting user kelompok:", error);
+        return [];
+      }
+
+      // Parse kelompok string: "1,2,3" -> [1, 2, 3]
+      const kelompokStr = data.kelompok.toString();
+      return kelompokStr
+        .split(",")
+        .map((k) => parseInt(k.trim()))
+        .filter((k) => !isNaN(k));
+    } catch (error) {
+      console.error("Error getting user kelompok:", error);
+      return [];
     }
   }
 
@@ -480,8 +568,18 @@ export class KelompokService extends MasterDataService {
     }
 
     try {
+      // Get user's kelompok access
+      const userRole = await MasterDataService.getUserRole();
+      const userKelompok = await MasterDataService.getUserKelompok();
+
+      console.log("[KelompokService.getAllKelompok] User role:", userRole);
+      console.log(
+        "[KelompokService.getAllKelompok] User kelompok access:",
+        userKelompok
+      );
+
       // Enhanced query with JOIN to get related names
-      const { data, error } = await supabase
+      let query = supabase
         .from("mkelompok")
         .select(
           `
@@ -492,6 +590,24 @@ export class KelompokService extends MasterDataService {
         )
         .eq("active", 1)
         .order("created_at", { ascending: false });
+
+      // Filter by user's kelompok access (unless super_admin)
+      if (userRole !== "super_admin" && userKelompok.length > 0) {
+        console.log(
+          "[KelompokService.getAllKelompok] Applying filter - user is NOT super_admin, filtering by kelompok:",
+          userKelompok
+        );
+        query = query.in("id", userKelompok);
+      } else {
+        console.log(
+          "[KelompokService.getAllKelompok] NOT applying filter - reason:",
+          userRole === "super_admin"
+            ? "User is super_admin"
+            : "No kelompok data found"
+        );
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error("Error fetching kelompok:", error);
@@ -506,7 +622,10 @@ export class KelompokService extends MasterDataService {
           nama_daerah: item.mdaerah?.nama_daerah || "-",
         })) || [];
 
-      console.log("Kelompok data with relationships:", flattenedData);
+      console.log(
+        "[KelompokService.getAllKelompok] Returned kelompok list:",
+        flattenedData
+      );
       return flattenedData;
     } catch (error) {
       console.error("Exception in getAllKelompok:", error);
@@ -843,6 +962,10 @@ export class JamaahService extends MasterDataService {
       throw new Error("Akses ditolak.");
     }
 
+    // Get user's kelompok access
+    const userRole = await MasterDataService.getUserRole();
+    const userKelompok = await MasterDataService.getUserKelompok();
+
     let query = supabase
       .from("mjamaah")
       .select(
@@ -859,6 +982,11 @@ export class JamaahService extends MasterDataService {
       )
       .eq("active", 1) // tanpa prefix tabel
       .order("nama", { ascending: true }); // juga tanpa prefix
+
+    // Apply kelompok filter based on user access (unless super_admin)
+    if (userRole !== "super_admin" && userKelompok.length > 0) {
+      query = query.in("id_kelompok", userKelompok);
+    }
 
     // Apply filters
     if (filters.kategori) {
@@ -898,13 +1026,40 @@ export class JamaahService extends MasterDataService {
 
   static async getAllKelompok() {
     try {
-      const { data, error } = await supabase
+      // Get user's kelompok access
+      const userRole = await MasterDataService.getUserRole();
+      const userKelompok = await MasterDataService.getUserKelompok();
+
+      console.log("[getAllKelompok] User role:", userRole);
+      console.log("[getAllKelompok] User kelompok access:", userKelompok);
+
+      let query = supabase
         .from("mkelompok")
         .select("id, nama_kelompok")
         .eq("active", 1)
         .order("nama_kelompok");
 
+      // Filter by user's kelompok access (unless super_admin)
+      if (userRole !== "super_admin" && userKelompok.length > 0) {
+        console.log(
+          "[getAllKelompok] Applying filter - user is NOT super_admin, filtering by kelompok:",
+          userKelompok
+        );
+        query = query.in("id", userKelompok);
+      } else {
+        console.log(
+          "[getAllKelompok] NOT applying filter - reason:",
+          userRole === "super_admin"
+            ? "User is super_admin"
+            : "No kelompok data found"
+        );
+      }
+
+      const { data, error } = await query;
+
       if (error) throw error;
+
+      console.log("[getAllKelompok] Returned kelompok list:", data);
       return data || [];
     } catch (error) {
       console.error("Error fetching kelompok options:", error);
@@ -929,6 +1084,17 @@ export class JamaahService extends MasterDataService {
   }
 
   static async createJamaah(data) {
+    // Validate kelompok access for non-super_admin users
+    const userRole = await MasterDataService.getUserRole();
+    if (userRole !== "super_admin") {
+      const userKelompok = await MasterDataService.getUserKelompok();
+      if (!userKelompok.includes(parseInt(data.id_kelompok))) {
+        throw new Error(
+          "Anda tidak memiliki akses untuk menambah jamaah ke kelompok ini"
+        );
+      }
+    }
+
     return await MasterDataService.createMasterRecord("mjamaah", {
       nama: data.nama,
       tgl_lahir: data.tgl_lahir,
@@ -951,6 +1117,17 @@ export class JamaahService extends MasterDataService {
   }
 
   static async updateJamaah(id, data) {
+    // Validate kelompok access for non-super_admin users
+    const userRole = await MasterDataService.getUserRole();
+    if (userRole !== "super_admin") {
+      const userKelompok = await MasterDataService.getUserKelompok();
+      if (!userKelompok.includes(parseInt(data.id_kelompok))) {
+        throw new Error(
+          "Anda tidak memiliki akses untuk mengubah jamaah ke kelompok ini"
+        );
+      }
+    }
+
     return await MasterDataService.updateMasterRecord("mjamaah", id, {
       nama: data.nama,
       tgl_lahir: data.tgl_lahir,

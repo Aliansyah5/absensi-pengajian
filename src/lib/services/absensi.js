@@ -51,6 +51,141 @@ export class AbsensiService {
       return null;
     }
   }
+
+  /**
+   * Get user's kelompok access (returns array of kelompok IDs)
+   */
+  static async getUserKelompok() {
+    try {
+      // First try to get user from localStorage auth
+      if (typeof window !== "undefined") {
+        const authUser = localStorage.getItem("auth_user");
+        if (authUser) {
+          try {
+            const parsedUser = JSON.parse(authUser);
+            if (parsedUser?.profile?.kelompok) {
+              // Parse kelompok string: "1,2,3" -> [1, 2, 3]
+              const kelompokStr = parsedUser.profile.kelompok.toString();
+              return kelompokStr
+                .split(",")
+                .map((k) => parseInt(k.trim()))
+                .filter((k) => !isNaN(k));
+            }
+          } catch (e) {
+            console.log("Error parsing auth_user for kelompok:", e);
+          }
+        }
+      }
+
+      return [];
+    } catch (error) {
+      console.error("Error getting user kelompok:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Get user role
+   */
+  static async getUserRole() {
+    try {
+      // First try to get user from Supabase auth
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      let currentUser = user;
+
+      // If no Supabase user, try to get from localStorage session
+      if (!currentUser && typeof window !== "undefined") {
+        const session = localStorage.getItem("supabase.auth.session");
+        if (session) {
+          try {
+            const parsedSession = JSON.parse(session);
+            currentUser = parsedSession.user;
+          } catch (e) {
+            console.log("Error parsing session:", e);
+          }
+        }
+      }
+
+      if (!currentUser) return "guest";
+
+      // Get role from muser table
+      const { data, error } = await supabase
+        .from("muser")
+        .select("role")
+        .eq("email", currentUser.email)
+        .eq("active", 1)
+        .single();
+
+      if (error) {
+        console.error("Error getting user role:", error);
+        return "user";
+      }
+
+      return data?.role || "user";
+    } catch (error) {
+      console.error("Error getting user role:", error);
+      return "user";
+    }
+  }
+
+  /**
+   * Get jamaah list filtered by kelompok with user access control
+   * @param {number|string} kelompokId - Selected kelompok ID
+   * @param {Array} tingkatIds - Array of kategori/tingkat IDs to filter (optional)
+   */
+  static async getJamaahByKelompok(kelompokId, tingkatIds = []) {
+    try {
+      // Get user's kelompok access and role
+      const userRole = await this.getUserRole();
+      const userKelompok = await this.getUserKelompok();
+
+      // Validate that user has access to this kelompok (unless super_admin)
+      if (userRole !== "super_admin" && userKelompok.length > 0) {
+        const kelompokIdNum = parseInt(kelompokId);
+        if (!userKelompok.includes(kelompokIdNum)) {
+          throw new Error(
+            "Anda tidak memiliki akses untuk melihat jamaah dari kelompok ini"
+          );
+        }
+      }
+
+      // Build query
+      let query = supabase
+        .from("mjamaah")
+        .select(
+          `
+          *,
+          mkategori (category),
+          mkelompok (nama_kelompok),
+          mdapukan (nama_dapukan)
+        `
+        )
+        .eq("active", 1)
+        .eq("id_kelompok", kelompokId)
+        .order("nama", { ascending: true });
+
+      // Apply tingkat filter if provided
+      if (tingkatIds && tingkatIds.length > 0) {
+        query = query.in("id_kategori", tingkatIds);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("Error fetching jamaah by kelompok:", error);
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error("Error in getJamaahByKelompok:", error);
+      throw error;
+    }
+  }
+
   /**
    * Mendapatkan semua data absensi dengan pagination
    */

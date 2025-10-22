@@ -256,20 +256,66 @@ export class DatabaseService {
   // Dashboard statistics
   static async getDashboardStats() {
     try {
-      // Get stats using manual queries instead of view
+      // Get user's kelompok access
+      let userKelompok = [];
+      let userRole = "user";
+
+      if (typeof window !== "undefined") {
+        const authUser = localStorage.getItem("auth_user");
+        if (authUser) {
+          try {
+            const parsedUser = JSON.parse(authUser);
+            userRole = parsedUser?.profile?.role || "user";
+
+            if (parsedUser?.profile?.kelompok) {
+              const kelompokStr = parsedUser.profile.kelompok.toString();
+              userKelompok = kelompokStr
+                .split(",")
+                .map((k) => parseInt(k.trim()))
+                .filter((k) => !isNaN(k));
+            }
+          } catch (e) {
+            console.log("Error parsing auth_user for stats:", e);
+          }
+        }
+      }
+
+      console.log("[getDashboardStats] User role:", userRole);
+      console.log("[getDashboardStats] User kelompok:", userKelompok);
+
+      // Build queries with kelompok filter for non-super_admin
+      let jamaahQuery = supabase
+        .from("mjamaah")
+        .select("jk, id_kelompok")
+        .eq("active", 1);
+      let kelompokQuery = supabase
+        .from("mkelompok")
+        .select("id")
+        .eq("active", 1);
+      let masjidQuery = supabase
+        .from("mmasjid")
+        .select("id, id_kelompok")
+        .eq("active", 1);
+
+      // Apply kelompok filter if user is not super_admin
+      if (userRole !== "super_admin" && userKelompok.length > 0) {
+        console.log(
+          "[getDashboardStats] Applying kelompok filter:",
+          userKelompok
+        );
+        jamaahQuery = jamaahQuery.in("id_kelompok", userKelompok);
+        kelompokQuery = kelompokQuery.in("id", userKelompok);
+        masjidQuery = masjidQuery.in("id_kelompok", userKelompok);
+      }
+
+      // Get stats using manual queries
       const [jamaahResult, pengajianResult, kelompokResult, masjidResult] =
         await Promise.all([
-          // Total jamaah by gender
-          supabase.from("mjamaah").select("jk").eq("active", 1),
-
-          // Total pengajian
+          jamaahQuery,
+          // Pengajian tidak difilter berdasarkan kelompok
           supabase.from("absensi").select("id").eq("active", 1),
-
-          // Total kelompok
-          supabase.from("mkelompok").select("id").eq("active", 1),
-
-          // Total masjid
-          supabase.from("mmasjid").select("id").eq("active", 1),
+          kelompokQuery,
+          masjidQuery,
         ]);
 
       const jamaahData = jamaahResult.data || [];
@@ -282,6 +328,7 @@ export class DatabaseService {
         total_masjid: masjidResult.data?.length || 0,
       };
 
+      console.log("[getDashboardStats] Filtered stats:", stats);
       return { data: stats, error: null };
     } catch (error) {
       console.error("Error getting dashboard stats:", error);

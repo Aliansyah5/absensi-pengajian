@@ -152,6 +152,9 @@
 								<option value={String(kelompok.id)}>{kelompok.nama_kelompok}</option>
 							{/each}
 						</select>
+						{#if kelompokList.length > 0}
+							<span class="field-hint">Menampilkan {kelompokList.length} kelompok sesuai hak akses Anda</span>
+						{/if}
 					</div>
 					<div class="form-group">
 						<label for="masjid">Tempat (Masjid)</label>
@@ -421,6 +424,15 @@
 		outline: none;
 		border-color: #3b82f6;
 		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+	}
+
+	.field-hint {
+		font-size: 0.75rem;
+		color: #6b7280;
+		font-style: italic;
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
 	}
 
 	.kategori-checkboxes,

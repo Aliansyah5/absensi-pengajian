@@ -105,11 +105,8 @@
 	<div class="w-full max-w-sm">
 		<!-- App Logo & Branding -->
 		<div class="text-center mb-8">
-			<div class="w-20 h-20 bg-primary-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-				<span class="text-3xl">📚</span>
-			</div>
-			<h1 class="text-2xl font-bold text-gray-900 mb-2">Absensi Pengajian</h1>
-			<p class="text-gray-600">Masuk untuk melanjutkan</p>
+			<img src="/logoapps.png" alt="App Logo" class="w-100 h-55 mb-5" />
+			<p class="text-gray-600">Silakan login untuk mengakses aplikasi.</p>
 		</div>
 
 		<!-- Login Card -->
@@ -185,7 +182,7 @@
 		<!-- Footer -->
 		<div class="text-center mt-6">
 			<p class="text-xs text-gray-500">
-				© 2025 IT Team. All rights reserved.
+				© 2025 IT Team Surabaya Timur. All rights reserved.
 			</p>
 		</div>
 	</div>

@@ -99,10 +99,9 @@
 		isLoading = true;
 		try {
 			// Load master data
-			const [pengajianResult, jamaahResult, masjidResult, kelompokResult, alquranResult, hadistResult, kategoriResult] =
+			const [pengajianResult, masjidResult, kelompokResult, alquranResult, hadistResult, kategoriResult] =
 				await Promise.all([
 					PengajianService.getAllPengajian(),
-					JamaahService.getAllJamaah(),
 					MasjidService.getAllMasjid(),
 					KelompokService.getAllKelompok(),
 					AlQuranService.getAllAlQuran(),
@@ -111,22 +110,22 @@
 				]);
 
 			pengajianList = pengajianResult;
-			jamaahList = jamaahResult;
+			// Don't load all jamaah initially - will be loaded after kelompok selection
+			jamaahList = [];
 			masjidList = masjidResult;
 			kelompokList = kelompokResult;
 			alquranList = alquranResult;
 			hadistList = hadistResult;
 			kategoriList = kategoriResult;
 
-			// Debug: Log jamaah data structure
-			console.log('Loaded jamaah data:', jamaahResult.slice(0, 2)); // Show first 2 items for inspection
-			console.log('Loaded kategori data:', kategoriResult);
+			// Debug: Log loaded data
 			console.log('Loaded kelompok data:', kelompokResult);
+			console.log('Loaded kategori data:', kategoriResult);
 
 			// Don't auto-select pengajian - let user choose
 			// selectedPengajian and formData.pengajian remain null
 
-			// Initialize absensi data
+			// Initialize absensi data (empty initially)
 			initializeAbsensiData();
 
 		} catch (error) {
@@ -181,24 +180,19 @@
 		try {
 			showMessage('info', 'Sinkronisasi data jamaah terbaru...');
 
-			// Prepare filters based on form data
-			const filters = {};
-
-			// Add kategori filter if tingkat is selected
-			if (formData.tingkat && formData.tingkat.length > 0) {
-				// Pass the full tingkat array for WHERE IN query
-				filters.kategori = formData.tingkat;
+			// Validate that kelompok is selected
+			if (!formData.kelompok) {
+				showMessage('error', 'Silakan pilih kelompok terlebih dahulu');
+				return;
 			}
 
-			// Add kelompok filter if selected
-			if (formData.kelompok) {
-				filters.kelompok = parseInt(formData.kelompok);
-			}
+			console.log('Sync jamaah for kelompok:', formData.kelompok, 'with tingkat:', formData.tingkat);
 
-			console.log('Sync jamaah with filters:', filters);
-
-			// Reload jamaah data with filters - ALWAYS get fresh/latest data from database
-			const newJamaahList = await JamaahService.getAllJamaah(filters);
+			// Use the new getJamaahByKelompok method that validates user access
+			const newJamaahList = await AbsensiService.getJamaahByKelompok(
+				formData.kelompok,
+				formData.tingkat || []
+			);
 
 			console.log('Loaded LATEST jamaah data:', newJamaahList.length, 'jamaah found');
 
@@ -474,24 +468,23 @@
 
 				// Reload jamaah data with proper filters to get the LATEST jamaah list
 				console.log('Loading LATEST jamaah data for edit with filters:', {
-					kategori: tingkatArray,
-					kelompok: absensi.kelompok ? parseInt(absensi.kelompok) : null
+					kelompok: absensi.kelompok,
+					tingkat: tingkatArray
 				});
 
-				// Reload jamaah data with filters - always get fresh data from database
-				const filters = {};
-				if (tingkatArray.length > 0) {
-					filters.kategori = tingkatArray;
-				}
+				// Use the new getJamaahByKelompok method that validates user access
 				if (absensi.kelompok) {
-					filters.kelompok = parseInt(absensi.kelompok);
+					const reloadedJamaahList = await AbsensiService.getJamaahByKelompok(
+						absensi.kelompok,
+						tingkatArray || []
+					);
+					jamaahList = reloadedJamaahList;
+
+					console.log('Reloaded LATEST jamaah for edit:', reloadedJamaahList.length, 'jamaah found');
+				} else {
+					console.warn('No kelompok found in absensi data, cannot load jamaah');
+					jamaahList = [];
 				}
-
-				// Force reload from database to get latest jamaah
-				const reloadedJamaahList = await JamaahService.getAllJamaah(filters);
-				jamaahList = reloadedJamaahList;
-
-				console.log('Reloaded LATEST jamaah for edit:', reloadedJamaahList.length, 'jamaah found');
 
 				// Initialize absensi data for ALL current jamaah (including new ones)
 				initializeAbsensiData();
