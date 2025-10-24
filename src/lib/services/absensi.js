@@ -89,42 +89,22 @@ export class AbsensiService {
    */
   static async getUserRole() {
     try {
-      // First try to get user from Supabase auth
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      let currentUser = user;
-
-      // If no Supabase user, try to get from localStorage session
-      if (!currentUser && typeof window !== "undefined") {
-        const session = localStorage.getItem("supabase.auth.session");
-        if (session) {
+      // Get user from localStorage auth_user
+      if (typeof window !== "undefined") {
+        const authUser = localStorage.getItem("auth_user");
+        if (authUser) {
           try {
-            const parsedSession = JSON.parse(session);
-            currentUser = parsedSession.user;
+            const parsedUser = JSON.parse(authUser);
+            const userRole = parsedUser?.profile?.role;
+            return userRole || "user";
           } catch (e) {
-            console.log("Error parsing session:", e);
+            console.log("Error parsing auth_user:", e);
+            return "user";
           }
         }
       }
 
-      if (!currentUser) return "guest";
-
-      // Get role from muser table
-      const { data, error } = await supabase
-        .from("muser")
-        .select("role")
-        .eq("email", currentUser.email)
-        .eq("active", 1)
-        .single();
-
-      if (error) {
-        console.error("Error getting user role:", error);
-        return "user";
-      }
-
-      return data?.role || "user";
+      return "guest";
     } catch (error) {
       console.error("Error getting user role:", error);
       return "user";
@@ -317,16 +297,26 @@ export class AbsensiService {
    * Membuat sesi absensi baru
    */
   static async createAbsensi(absensiData) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error("User tidak terautentikasi");
+    // Get user from localStorage
+    let userEmail = "system";
+    if (typeof window !== "undefined") {
+      const authUser = localStorage.getItem("auth_user");
+      if (authUser) {
+        try {
+          const parsedUser = JSON.parse(authUser);
+          userEmail =
+            parsedUser?.profile?.username || parsedUser?.email || "system";
+        } catch (e) {
+          console.log("Error parsing auth_user:", e);
+        }
+      }
+    }
 
     const newAbsensi = {
       ...absensiData,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      user_modified: user.email || "system",
+      user_modified: userEmail,
       active: 1,
     };
 
@@ -344,15 +334,25 @@ export class AbsensiService {
    * Update data absensi
    */
   static async updateAbsensi(id, absensiData) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error("User tidak terautentikasi");
+    // Get user from localStorage
+    let userEmail = "system";
+    if (typeof window !== "undefined") {
+      const authUser = localStorage.getItem("auth_user");
+      if (authUser) {
+        try {
+          const parsedUser = JSON.parse(authUser);
+          userEmail =
+            parsedUser?.profile?.username || parsedUser?.email || "system";
+        } catch (e) {
+          console.log("Error parsing auth_user:", e);
+        }
+      }
+    }
 
     const updateData = {
       ...absensiData,
       updated_at: new Date().toISOString(),
-      user_modified: user.email || "system",
+      user_modified: userEmail,
     };
 
     const { data, error } = await supabase

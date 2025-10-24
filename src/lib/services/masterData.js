@@ -10,42 +10,22 @@ export class MasterDataService {
    */
   static async isSuperAdmin() {
     try {
-      // First try to get user from Supabase auth
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      let currentUser = user;
-
-      // If no Supabase user, try to get from localStorage session (for our mock auth)
-      if (!currentUser && typeof window !== "undefined") {
-        const session = localStorage.getItem("supabase.auth.session");
-        if (session) {
+      // Get user from localStorage auth_user
+      if (typeof window !== "undefined") {
+        const authUser = localStorage.getItem("auth_user");
+        if (authUser) {
           try {
-            const parsedSession = JSON.parse(session);
-            currentUser = parsedSession.user;
+            const parsedUser = JSON.parse(authUser);
+            const userRole = parsedUser?.profile?.role;
+            return userRole === "super_admin";
           } catch (e) {
-            console.log("Error parsing session:", e);
+            console.log("Error parsing auth_user:", e);
+            return false;
           }
         }
       }
 
-      if (!currentUser) return false;
-
-      // Check if user has super_admin role in muser table
-      const { data, error } = await supabase
-        .from("muser")
-        .select("role")
-        .eq("email", currentUser.email)
-        .eq("active", 1)
-        .single();
-
-      if (error) {
-        console.error("Error checking super admin status:", error);
-        return false;
-      }
-
-      return data?.role === "super_admin";
+      return false;
     } catch (error) {
       console.error("Error checking super admin status:", error);
       return false;
@@ -57,51 +37,24 @@ export class MasterDataService {
    */
   static async getUserRole() {
     try {
-      // First try to get user from Supabase auth
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      let currentUser = user;
-
-      // If no Supabase user, try to get from localStorage session (for our mock auth)
-      if (!currentUser && typeof window !== "undefined") {
-        const session = localStorage.getItem("supabase.auth.session");
-        if (session) {
+      // Get user from localStorage auth_user
+      if (typeof window !== "undefined") {
+        const authUser = localStorage.getItem("auth_user");
+        if (authUser) {
           try {
-            const parsedSession = JSON.parse(session);
-            currentUser = parsedSession.user;
+            const parsedUser = JSON.parse(authUser);
+            const userRole = parsedUser?.profile?.role;
+            console.log("[getUserRole] Role from localStorage:", userRole);
+            return userRole || "user";
           } catch (e) {
-            console.log("Error parsing session:", e);
+            console.log("Error parsing auth_user:", e);
+            return "user";
           }
         }
       }
 
-      if (!currentUser) {
-        console.log("[getUserRole] No current user found");
-        return "guest";
-      }
-
-      // Get role from muser table
-      const { data, error } = await supabase
-        .from("muser")
-        .select("role")
-        .eq("email", currentUser.email)
-        .eq("active", 1)
-        .single();
-
-      if (error) {
-        console.error("Error getting user role:", error);
-        return "user";
-      }
-
-      console.log(
-        "[getUserRole] User email:",
-        currentUser.email,
-        "Role:",
-        data?.role
-      );
-      return data?.role || "user";
+      console.log("[getUserRole] No auth_user found in localStorage");
+      return "guest";
     } catch (error) {
       console.error("Error getting user role:", error);
       return "user";
@@ -219,31 +172,27 @@ export class MasterDataService {
    */
   static async validateMasterAccess(operation = "read") {
     if (operation === "read") {
-      // Anyone authenticated can read - check both Supabase auth and localStorage session
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      let currentUser = user;
-
-      // If no Supabase user, try to get from localStorage session (for our mock auth)
-      if (!currentUser && typeof window !== "undefined") {
-        const session = localStorage.getItem("supabase.auth.session");
-        if (session) {
-          try {
-            const parsedSession = JSON.parse(session);
-            currentUser = parsedSession.user;
-          } catch (e) {
-            console.log("Error parsing session:", e);
-          }
-        }
+      // Anyone authenticated can read - check localStorage
+      if (typeof window !== "undefined") {
+        const authUser = localStorage.getItem("auth_user");
+        return !!authUser;
       }
-
-      return !!currentUser;
+      return false;
     }
 
-    // For create, update, delete - only super admin
-    return await this.isSuperAdmin();
+    // For delete - allow both super_admin and admin
+    if (operation === "delete") {
+      const userRole = await this.getUserRole();
+      return userRole === "super_admin" || userRole === "admin";
+    }
+
+    // For create and update - allow both super_admin and admin
+    if (operation === "create" || operation === "update") {
+      const userRole = await this.getUserRole();
+      return userRole === "super_admin" || userRole === "admin";
+    }
+
+    return false;
   }
   /**
    * Get all records from a master table
@@ -298,26 +247,21 @@ export class MasterDataService {
     const hasAccess = await MasterDataService.validateMasterAccess("create");
     if (!hasAccess) {
       throw new Error(
-        "Akses ditolak. Hanya Super Admin yang dapat menambah data master."
+        "Akses ditolak. Hanya Super Admin dan Admin yang dapat menambah data master."
       );
     }
 
-    // Get current user from either Supabase auth or localStorage
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    let currentUser = user;
-
-    // If no Supabase user, try to get from localStorage session
-    if (!currentUser && typeof window !== "undefined") {
-      const session = localStorage.getItem("supabase.auth.session");
-      if (session) {
+    // Get current user email from localStorage (skip Supabase auth)
+    let userEmail = "system";
+    if (typeof window !== "undefined") {
+      const authUser = localStorage.getItem("auth_user");
+      if (authUser) {
         try {
-          const parsedSession = JSON.parse(session);
-          currentUser = parsedSession.user;
+          const parsedUser = JSON.parse(authUser);
+          userEmail =
+            parsedUser?.profile?.username || parsedUser?.email || "system";
         } catch (e) {
-          console.log("Error parsing session:", e);
+          console.log("Error parsing auth_user:", e);
         }
       }
     }
@@ -326,17 +270,19 @@ export class MasterDataService {
       ...recordData,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      user_modified: currentUser?.email || "system",
+      user_modified: userEmail,
       active: 1,
     };
 
+    // Use .select('*') to only get columns from main table, without joins/relations
     const { data, error } = await supabase
       .from(tableName)
       .insert(newRecord)
-      .select();
+      .select("*")
+      .single();
 
     if (error) throw error;
-    return data[0];
+    return data;
   }
 
   /**
@@ -346,26 +292,21 @@ export class MasterDataService {
     const hasAccess = await MasterDataService.validateMasterAccess("update");
     if (!hasAccess) {
       throw new Error(
-        "Akses ditolak. Hanya Super Admin yang dapat mengubah data master."
+        "Akses ditolak. Hanya Super Admin dan Admin yang dapat mengubah data master."
       );
     }
 
-    // Get current user from either Supabase auth or localStorage
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    let currentUser = user;
-
-    // If no Supabase user, try to get from localStorage session
-    if (!currentUser && typeof window !== "undefined") {
-      const session = localStorage.getItem("supabase.auth.session");
-      if (session) {
+    // Get current user email from localStorage (skip Supabase auth)
+    let userEmail = "system";
+    if (typeof window !== "undefined") {
+      const authUser = localStorage.getItem("auth_user");
+      if (authUser) {
         try {
-          const parsedSession = JSON.parse(session);
-          currentUser = parsedSession.user;
+          const parsedUser = JSON.parse(authUser);
+          userEmail =
+            parsedUser?.profile?.username || parsedUser?.email || "system";
         } catch (e) {
-          console.log("Error parsing session:", e);
+          console.log("Error parsing auth_user:", e);
         }
       }
     }
@@ -373,17 +314,22 @@ export class MasterDataService {
     const updateData = {
       ...recordData,
       updated_at: new Date().toISOString(),
-      user_modified: currentUser?.email || "system",
+      user_modified: userEmail,
     };
 
+    // Ensure id is integer for proper matching
+    const recordId = typeof id === "string" ? parseInt(id) : id;
+
+    // Use .select('*') to only get columns from main table, without joins/relations
     const { data, error } = await supabase
       .from(tableName)
       .update(updateData)
-      .eq("id", id)
-      .select();
+      .eq("id", recordId)
+      .select("*")
+      .single();
 
     if (error) throw error;
-    return data[0];
+    return data;
   }
 
   /**
@@ -393,42 +339,42 @@ export class MasterDataService {
     const hasAccess = await MasterDataService.validateMasterAccess("delete");
     if (!hasAccess) {
       throw new Error(
-        "Akses ditolak. Hanya Super Admin yang dapat menghapus data master."
+        "Akses ditolak. Hanya Super Admin dan Admin yang dapat menghapus data master."
       );
     }
 
-    // Get current user from either Supabase auth or localStorage
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    let currentUser = user;
-
-    // If no Supabase user, try to get from localStorage session
-    if (!currentUser && typeof window !== "undefined") {
-      const session = localStorage.getItem("supabase.auth.session");
-      if (session) {
+    // Get current user email from localStorage (skip Supabase auth)
+    let userEmail = "system";
+    if (typeof window !== "undefined") {
+      const authUser = localStorage.getItem("auth_user");
+      if (authUser) {
         try {
-          const parsedSession = JSON.parse(session);
-          currentUser = parsedSession.user;
+          const parsedUser = JSON.parse(authUser);
+          userEmail =
+            parsedUser?.profile?.username || parsedUser?.email || "system";
         } catch (e) {
-          console.log("Error parsing session:", e);
+          console.log("Error parsing auth_user:", e);
         }
       }
     }
 
+    // Ensure id is integer for proper matching
+    const recordId = typeof id === "string" ? parseInt(id) : id;
+
+    // Use .select('*') to only get columns from main table, without joins/relations
     const { data, error } = await supabase
       .from(tableName)
       .update({
         active: 0,
         updated_at: new Date().toISOString(),
-        user_modified: currentUser?.email || "system",
+        user_modified: userEmail,
       })
-      .eq("id", id)
-      .select();
+      .eq("id", recordId)
+      .select("*")
+      .single();
 
     if (error) throw error;
-    return data[0];
+    return data;
   }
 
   /**
@@ -438,7 +384,7 @@ export class MasterDataService {
     const hasAccess = await MasterDataService.validateMasterAccess("delete");
     if (!hasAccess) {
       throw new Error(
-        "Akses ditolak. Hanya Super Admin yang dapat menghapus data master."
+        "Akses ditolak. Hanya Super Admin dan Admin yang dapat menghapus data master."
       );
     }
 
