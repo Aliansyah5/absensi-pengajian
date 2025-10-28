@@ -1,0 +1,43 @@
+name: Auto-Deploy with Cache Update
+
+on:
+  push:
+    branches:
+      - main
+      - deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Increment cache version
+        run: node increment-cache.js
+
+      - name: Build application
+        run: npm run build
+
+      - name: Commit cache version bump
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add static/sw.js
+          git commit -m "chore: increment cache version for deployment"
+          git push
+        continue-on-error: true
+
+      - name: Deploy to production
+        run: |
+          echo "Deploy to your production server here"
+          # Add your deployment commands here
+          # Example: rsync, scp, SSH, or your deployment tool

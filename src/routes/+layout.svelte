@@ -17,17 +17,26 @@
 			isAuthenticated = state.isAuthenticated;
 		});
 
-		// Register service worker with auto-update detection
+		// Register service worker with aggressive auto-update detection
 		if ('serviceWorker' in navigator) {
 			navigator.serviceWorker.register('/sw.js')
 				.then((reg) => {
 					registration = reg;
 					console.log('[App] Service Worker registered:', reg);
 
-					// Check for updates every 60 seconds
+					// Check for updates every 20 seconds (more aggressive)
 					setInterval(() => {
+						console.log('[App] Checking for updates...');
 						reg.update();
-					}, 60000);
+					}, 20000);
+
+					// Also check on visibility change (when app comes to foreground)
+					document.addEventListener('visibilitychange', () => {
+						if (!document.hidden) {
+							console.log('[App] App came to foreground, checking for updates...');
+							reg.update();
+						}
+					});
 
 					// Detect when new service worker is waiting
 					reg.addEventListener('updatefound', () => {
@@ -37,9 +46,27 @@
 							if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
 								// New service worker available
 								updateAvailable = true;
-								console.log('[App] New version available! Show update notification.');
+								console.log('[App] New version available! Auto-updating in 3 seconds...');
+
+								// Auto-update after 3 seconds
+								setTimeout(() => {
+									updateApp();
+								}, 3000);
 							}
 						});
+					});
+
+					// Listen for SW update message
+					navigator.serviceWorker.addEventListener('message', (event) => {
+						if (event.data && event.data.type === 'SW_UPDATED') {
+							console.log('[App] Received SW_UPDATED message:', event.data.version);
+							updateAvailable = true;
+
+							// Auto-reload
+							setTimeout(() => {
+								window.location.reload();
+							}, 1000);
+						}
 					});
 				})
 				.catch((err) => {
@@ -49,7 +76,9 @@
 			// Listen for controller change (new SW activated)
 			navigator.serviceWorker.addEventListener('controllerchange', () => {
 				console.log('[App] New service worker activated, reloading...');
-				window.location.reload();
+				setTimeout(() => {
+					window.location.reload();
+				}, 500);
 			});
 		}
 
@@ -57,11 +86,14 @@
 	});
 
 	function updateApp() {
+		console.log('[App] Updating app...');
 		if (registration && registration.waiting) {
 			// Tell waiting service worker to skip waiting
+			console.log('[App] Telling waiting SW to skip waiting');
 			registration.waiting.postMessage({ type: 'SKIP_WAITING' });
 		} else {
 			// If no waiting worker, just reload
+			console.log('[App] No waiting SW, reloading page');
 			window.location.reload();
 		}
 	}
@@ -86,11 +118,9 @@
 {#if updateAvailable}
 	<div class="update-banner">
 		<div class="update-content">
-			<span class="update-icon">🎉</span>
-			<span class="update-text">Update baru tersedia!</span>
-			<button class="update-btn" on:click={updateApp}>
-				Update Sekarang
-			</button>
+			<span class="update-icon">🚀</span>
+			<span class="update-text">Updating aplikasi... Halaman akan di-reload secara otomatis</span>
+			<div class="update-spinner"></div>
 		</div>
 	</div>
 {/if}
@@ -107,7 +137,7 @@
 		top: 0;
 		left: 0;
 		right: 0;
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		background: linear-gradient(135deg, #10b981 0%, #059669 100%);
 		color: white;
 		padding: 0.75rem 1rem;
 		z-index: 9999;
@@ -124,6 +154,15 @@
 		}
 	}
 
+	@keyframes spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
 	.update-content {
 		display: flex;
 		justify-content: center;
@@ -135,33 +174,31 @@
 
 	.update-icon {
 		font-size: 1.25rem;
+		animation: slideUp 1s ease-in-out infinite;
+	}
+
+	@keyframes slideUp {
+		0%, 100% {
+			transform: translateY(0);
+		}
+		50% {
+			transform: translateY(-3px);
+		}
 	}
 
 	.update-text {
 		font-weight: 500;
 		font-size: 0.95rem;
+		flex: 1;
 	}
 
-	.update-btn {
-		background: white;
-		color: #667eea;
-		border: none;
-		padding: 0.5rem 1.25rem;
-		border-radius: 6px;
-		font-weight: 600;
-		font-size: 0.9rem;
-		cursor: pointer;
-		transition: all 0.2s;
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-	}
-
-	.update-btn:hover {
-		transform: translateY(-1px);
-		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-	}
-
-	.update-btn:active {
-		transform: translateY(0);
+	.update-spinner {
+		width: 18px;
+		height: 18px;
+		border: 2px solid rgba(255, 255, 255, 0.3);
+		border-top-color: white;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
 	}
 
 	@media (max-width: 640px) {
@@ -177,9 +214,9 @@
 			font-size: 0.85rem;
 		}
 
-		.update-btn {
-			font-size: 0.85rem;
-			padding: 0.4rem 1rem;
+		.update-spinner {
+			width: 16px;
+			height: 16px;
 		}
 	}
 

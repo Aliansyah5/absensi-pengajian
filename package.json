@@ -8,7 +8,9 @@
     "dev": "vite dev",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json --watch"
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json --watch",
+    "deploy": "node increment-cache.js && vite build",
+    "deploy:auto": "node increment-cache.js && vite build && npm run preview"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^3.0.0",
