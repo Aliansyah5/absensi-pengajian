@@ -34,8 +34,15 @@
 		infaq: 0
 	};
 
-	// Use external formData if provided (for editing), otherwise use local
-	$: currentFormData = formData || localFormData;
+	// Initialize currentFormData directly to enable two-way binding
+	let currentFormData = { ...localFormData };
+
+	// Sync with external formData when it changes (for edit mode)
+	$: if (formData) {
+		currentFormData = { ...formData };
+	}
+
+	// Keep date synchronized
 	$: currentFormData.tgl = selectedDate;
 
 	// Filter masjid berdasarkan kelompok yang dipilih
@@ -323,7 +330,7 @@
 							id="infaq"
 							bind:value={currentFormData.infaq}
 							min="0"
-							step="1000"
+							step="0.01"
 							placeholder="0"
 						/>
 					</div>

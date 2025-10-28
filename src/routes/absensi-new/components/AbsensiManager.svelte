@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { supabase } from '$lib/utils/supabase.js';
 	import { AbsensiService } from '$lib/services/absensi.js';
 	import { PengajianService, JamaahService, MasjidService, AlQuranService, HadistService, KelompokService, KategoriService } from '$lib/services/masterData.js';
 	import AbsensiList from './AbsensiList.svelte';
@@ -196,15 +197,24 @@
 
 			console.log('Loaded LATEST jamaah data:', newJamaahList.length, 'jamaah found');
 
+			// Create set of valid jamaah IDs based on current filter
+			const validJamaahIds = new Set(newJamaahList.map(j => j.id));
+			console.log('Valid jamaah IDs:', Array.from(validJamaahIds));
+
 			// Preserve existing absensi data
 			const existingData = { ...absensiData };
 
 			// Initialize new structure for ALL current jamaah
 			absensiData = {};
+			let countPreserved = 0;
+			let countNew = 0;
+			let countRemoved = 0;
+
 			newJamaahList.forEach(jamaah => {
 				if (existingData[jamaah.id]) {
 					// Keep existing attendance data if jamaah was already in the list
 					absensiData[jamaah.id] = existingData[jamaah.id];
+					countPreserved++;
 				} else {
 					// Initialize new jamaah with default Alpha status
 					absensiData[jamaah.id] = {
@@ -212,20 +222,96 @@
 						status_kehadiran: 'A', // Default to Alpha (Absent)
 						keterangan: ''
 					};
+					countNew++;
 				}
 			});
+
+			// Count removed jamaah (jamaah yang tidak masuk dalam tingkat/kategori)
+			Object.keys(existingData).forEach(jamaahId => {
+				if (!validJamaahIds.has(parseInt(jamaahId))) {
+					countRemoved++;
+					console.log('Removed jamaah ID:', jamaahId, '(tidak sesuai tingkat/kategori)');
+				}
+			});
+
+			// Process database changes if in edit mode
+			if (existingAbsensiId) {
+				// 1. Delete dabsensi records for removed jamaah
+				if (countRemoved > 0) {
+					console.log(`Deleting ${countRemoved} dabsensi records that no longer match filter...`);
+
+					// Get IDs to remove
+					const idsToRemove = Object.keys(existingData)
+						.filter(jamaahId => !validJamaahIds.has(parseInt(jamaahId)))
+						.map(id => parseInt(id));
+
+					// Delete from database
+					for (const jamaahId of idsToRemove) {
+						try {
+							const { error } = await supabase
+								.from('dabsensi')
+								.delete()
+								.eq('id', existingAbsensiId)
+								.eq('id_siswa', jamaahId);
+
+							if (error) {
+								console.error('Error deleting dabsensi for jamaah', jamaahId, ':', error);
+							} else {
+								console.log('Deleted dabsensi for jamaah ID:', jamaahId);
+							}
+						} catch (err) {
+							console.error('Error in delete operation:', err);
+						}
+					}
+				}
+
+				// 2. Insert new jamaah records to dabsensi
+				if (countNew > 0) {
+					console.log(`Inserting ${countNew} new jamaah records to dabsensi...`);
+
+					// Get IDs to insert (jamaah that are in newJamaahList but not in existingData)
+					const idsToInsert = newJamaahList
+						.filter(jamaah => !existingData[jamaah.id])
+						.map(jamaah => jamaah.id);
+
+					// Insert to database
+					for (const jamaahId of idsToInsert) {
+						try {
+							const { error } = await supabase
+								.from('dabsensi')
+								.insert({
+									id: existingAbsensiId,
+									id_siswa: jamaahId,
+									status: 'A', // Default Alpha (Absent)
+									keterangan: ''
+								});
+
+							if (error) {
+								console.error('Error inserting dabsensi for jamaah', jamaahId, ':', error);
+							} else {
+								console.log('Inserted dabsensi for jamaah ID:', jamaahId);
+							}
+						} catch (err) {
+							console.error('Error in insert operation:', err);
+						}
+					}
+				}
+			}
 
 			// Update jamaah list with latest data
 			jamaahList = newJamaahList;
 
 			const jumlahJamaah = newJamaahList.length;
-			const jumlahBaru = newJamaahList.length - Object.keys(existingData).length;
 
-			if (jumlahBaru > 0) {
-				showMessage('success', `Data jamaah berhasil disinkronkan (${jumlahJamaah} jamaah, +${jumlahBaru} baru)`);
-			} else {
-				showMessage('success', `Data jamaah berhasil disinkronkan (${jumlahJamaah} jamaah ditemukan)`);
+			let statusMsg = `Data jamaah berhasil disinkronkan (${jumlahJamaah} jamaah)`;
+			if (countNew > 0) {
+				statusMsg += `, +${countNew} baru disimpan`;
 			}
+			if (countRemoved > 0) {
+				statusMsg += `, -${countRemoved} dihapus`;
+			}
+
+			showMessage('success', statusMsg);
 
 		} catch (error) {
 			console.error('Error syncing jamaah data:', error);
@@ -254,13 +340,14 @@
 				return;
 			}
 
-			// Save absensi header first (create mode)
+			// Save absensi header (create or update mode)
 			showMessage('info', 'Menyimpan data pengajian...');
 
 			const absensiHeader = await AbsensiService.ensureAbsensiHeader({
 				formData: formData,
 				tanggal: selectedDate,
-				pengajianId: selectedPengajian.id
+				pengajianId: selectedPengajian.id,
+				existingId: existingAbsensiId // Pass existingId for update mode
 			});
 
 			if (!absensiHeader) {
@@ -298,7 +385,8 @@
 			await AbsensiService.ensureAbsensiHeader({
 				formData: formData,
 				tanggal: selectedDate,
-				pengajianId: selectedPengajian.id
+				pengajianId: selectedPengajian.id,
+				existingId: existingAbsensiId // Pass existingId for update mode
 			});
 
 			showMessage('success', 'Absensi berhasil diselesaikan dan disimpan');
@@ -342,7 +430,8 @@
 			const absensiHeader = await AbsensiService.ensureAbsensiHeader({
 				formData: formData,
 				tanggal: selectedDate,
-				pengajianId: selectedPengajian.id
+				pengajianId: selectedPengajian.id,
+				existingId: existingAbsensiId // Pass existingId for update mode
 			});
 
 			// If header creation failed (likely due to auth), skip silently
@@ -486,20 +575,91 @@
 					// Wait for the next tick to ensure jamaahList is fully updated
 					await new Promise(resolve => setTimeout(resolve, 100));
 
+					// Create set of valid jamaah IDs based on current filter
+					const validJamaahIds = new Set(reloadedJamaahList.map(j => j.id));
+					console.log('[Edit Mode] Valid jamaah IDs:', Array.from(validJamaahIds));
+
 					// Initialize absensi data for ALL current jamaah (including new ones)
 					initializeAbsensiData();
 
+					// Track jamaah IDs that need to be deleted from database
+					const idsToDelete = [];
+
 					// Populate absensi data with existing detail (preserve existing attendance)
 					detailData.forEach(detail => {
-						if (detail.id_siswa && absensiData[detail.id_siswa]) {
-							// Only populate if jamaah still exists in current filtered list
-							absensiData[detail.id_siswa] = {
-								jamaah_id: detail.id_siswa,
-								status_kehadiran: detail.status || 'A', // Default to Alpha if empty
-								keterangan: detail.keterangan || ''
-							};
+						if (detail.id_siswa) {
+							if (absensiData[detail.id_siswa]) {
+								// Only populate if jamaah still exists in current filtered list
+								absensiData[detail.id_siswa] = {
+									jamaah_id: detail.id_siswa,
+									status_kehadiran: detail.status || 'A', // Default to Alpha if empty
+									keterangan: detail.keterangan || ''
+								};
+							} else if (!validJamaahIds.has(detail.id_siswa)) {
+								// This jamaah is in database but not in current filter - mark for deletion
+								idsToDelete.push(detail.id_siswa);
+								console.log('[Edit Mode] Jamaah ID', detail.id_siswa, 'tidak sesuai filter - will be deleted');
+							}
 						}
 					});
+
+					// Delete dabsensi records that don't match current filter
+					if (idsToDelete.length > 0) {
+						console.log(`[Edit Mode] Deleting ${idsToDelete.length} dabsensi records that don't match filter...`);
+
+						for (const jamaahId of idsToDelete) {
+							try {
+								const { error } = await supabase
+									.from('dabsensi')
+									.delete()
+									.eq('id', id)
+									.eq('id_siswa', jamaahId);
+
+								if (error) {
+									console.error('[Edit Mode] Error deleting dabsensi for jamaah', jamaahId, ':', error);
+								} else {
+									console.log('[Edit Mode] Deleted dabsensi for jamaah ID:', jamaahId);
+								}
+							} catch (err) {
+								console.error('[Edit Mode] Error in delete operation:', err);
+							}
+						}
+
+						showMessage('info', `${idsToDelete.length} data jamaah lama dibersihkan (tidak sesuai filter)`, 2000);
+					}
+
+					// Insert new jamaah that are not in database yet
+					const existingJamaahIds = new Set(detailData.map(d => d.id_siswa));
+					const idsToInsert = reloadedJamaahList
+						.filter(jamaah => !existingJamaahIds.has(jamaah.id))
+						.map(jamaah => jamaah.id);
+
+					if (idsToInsert.length > 0) {
+						console.log(`[Edit Mode] Inserting ${idsToInsert.length} new jamaah records to dabsensi...`);
+
+						for (const jamaahId of idsToInsert) {
+							try {
+								const { error } = await supabase
+									.from('dabsensi')
+									.insert({
+										id: id,
+										id_siswa: jamaahId,
+										status: 'A', // Default Alpha (Absent)
+										keterangan: ''
+									});
+
+								if (error) {
+									console.error('[Edit Mode] Error inserting dabsensi for jamaah', jamaahId, ':', error);
+								} else {
+									console.log('[Edit Mode] Inserted dabsensi for jamaah ID:', jamaahId);
+								}
+							} catch (err) {
+								console.error('[Edit Mode] Error in insert operation:', err);
+							}
+						}
+
+						showMessage('info', `${idsToInsert.length} jamaah baru ditambahkan ke database`, 2000);
+					}
 
 					console.log('[Edit Mode] Populated absensi data:', Object.keys(absensiData).length, 'entries');
 					console.log('[Edit Mode] Jamaah list length:', jamaahList.length);

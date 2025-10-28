@@ -182,11 +182,12 @@ export class AbsensiService {
 				mmasjid (nama_masjid),
 				malquran (nama_surat),
 				mhadist (nama_hadist),
-				dabsensi (id)
-			`
+				dabsensi!inner (id, id_siswa, status)
+			`,
+        { count: "exact" }
       )
       .eq("active", 1)
-      .order("tgl", { ascending: false })
+      .order("id", { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
 
     // Apply filters
@@ -197,6 +198,28 @@ export class AbsensiService {
 
     const { data, error } = await query;
     if (error) throw error;
+
+    // Process data to count dabsensi for each absensi
+    if (data && Array.isArray(data)) {
+      return data.map((item) => {
+        // Count unique jamaah (id_siswa) in dabsensi
+        const uniqueJamaah = new Set();
+        if (item.dabsensi && Array.isArray(item.dabsensi)) {
+          item.dabsensi.forEach((d) => {
+            if (d && d.id_siswa) {
+              uniqueJamaah.add(d.id_siswa);
+            }
+          });
+        }
+
+        // Add jamaah_count property
+        return {
+          ...item,
+          jamaah_count: uniqueJamaah.size,
+        };
+      });
+    }
+
     return data;
   }
 
@@ -212,15 +235,38 @@ export class AbsensiService {
 				mpengajian (nama_pengajian),
 				mmasjid (nama_masjid),
 				malquran (nama_surat),
-				mhadist (nama_hadist)
+				mhadist (nama_hadist),
+				dabsensi!inner (id, id_siswa, status)
 			`
       )
       .eq("active", 1)
       .eq("tgl", today)
-      .order("tgl", { ascending: false });
+      .order("id", { ascending: false });
 
     const { data, error } = await query;
     if (error) throw error;
+
+    // Process data to count dabsensi for each absensi
+    if (data && Array.isArray(data)) {
+      return data.map((item) => {
+        // Count unique jamaah (id_siswa) in dabsensi
+        const uniqueJamaah = new Set();
+        if (item.dabsensi && Array.isArray(item.dabsensi)) {
+          item.dabsensi.forEach((d) => {
+            if (d && d.id_siswa) {
+              uniqueJamaah.add(d.id_siswa);
+            }
+          });
+        }
+
+        // Add jamaah_count property
+        return {
+          ...item,
+          jamaah_count: uniqueJamaah.size,
+        };
+      });
+    }
+
     return data;
   }
 
@@ -1257,7 +1303,12 @@ export class AbsensiService {
   /**
    * Create or update absensi header for auto-save functionality
    */
-  static async ensureAbsensiHeader({ formData, tanggal, pengajianId }) {
+  static async ensureAbsensiHeader({
+    formData,
+    tanggal,
+    pengajianId,
+    existingId = null,
+  }) {
     try {
       const currentUser = await this.getCurrentUser();
 
@@ -1270,20 +1321,7 @@ export class AbsensiService {
       // Get user email for logging
       const userEmail = currentUser.email || "system";
 
-      // Check if absensi header already exists for this date and pengajian
-      const { data: existingAbsensi } = await supabase
-        .from("absensi")
-        .select("*")
-        .eq("tgl", tanggal)
-        .eq("pengajian", pengajianId)
-        .eq("active", 1)
-        .single();
-
-      if (existingAbsensi) {
-        return existingAbsensi;
-      }
-
-      // Create new absensi header
+      // Prepare absensi data
       const absensiData = {
         pengajian: pengajianId,
         tgl: tanggal,
@@ -1296,23 +1334,82 @@ export class AbsensiService {
         jam_akhir: formData.jam_akhir || "20:30",
         quran: formData.quran || null,
         pengajar_quran: formData.pengajar_quran || "",
-        ayat_awal: formData.ayat_awal || "",
-        ayat_akhir: formData.ayat_akhir || "",
+        ayat_awal: formData.ayat_awal ? parseInt(formData.ayat_awal) : null,
+        ayat_akhir: formData.ayat_akhir ? parseInt(formData.ayat_akhir) : null,
         hadist: formData.hadist || null,
         pengajar_hadist: formData.pengajar_hadist || "",
-        hal_awal: formData.hal_awal || "",
-        hal_akhir: formData.hal_akhir || "",
+        hal_awal: formData.hal_awal ? parseInt(formData.hal_awal) : null,
+        hal_akhir: formData.hal_akhir ? parseInt(formData.hal_akhir) : null,
         penasehat: formData.penasehat || "",
-        infaq: parseFloat(formData.infaq) || 0,
+        infaq: formData.infaq ? parseFloat(formData.infaq) : 0,
         active: 1,
         user_modified: userEmail,
-        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+      };
+
+      // If existingId provided, UPDATE the record
+      if (existingId) {
+        console.log("Updating existing absensi header:", existingId);
+        const { data, error } = await supabase
+          .from("absensi")
+          .update(absensiData)
+          .eq("id", existingId)
+          .select()
+          .single();
+
+        if (error) throw error;
+        console.log("Absensi header updated successfully");
+        return data;
+      }
+
+      // Check if absensi header already exists for this exact combination
+      // This prevents creating duplicates during auto-save
+      // We check: date + pengajian + kelompok (if specified)
+      let existingQuery = supabase
+        .from("absensi")
+        .select("*")
+        .eq("tgl", tanggal)
+        .eq("pengajian", pengajianId)
+        .eq("active", 1)
+        .order("id", { ascending: false })
+        .limit(1);
+
+      // Add kelompok filter if specified
+      if (formData.kelompok) {
+        existingQuery = existingQuery.eq("kelompok", formData.kelompok);
+      }
+
+      const { data: existingRecords } = await existingQuery;
+
+      // If found existing record with same date+pengajian+kelompok, return it
+      if (existingRecords && existingRecords.length > 0) {
+        const existing = existingRecords[0];
+
+        // Check if this was created very recently (within last 5 minutes)
+        // This prevents duplicate when auto-saving in same session
+        const createdAt = new Date(existing.created_at);
+        const now = new Date();
+        const diffMinutes = (now - createdAt) / 1000 / 60;
+
+        // If created within 5 minutes, assume it's the same session
+        if (diffMinutes < 5) {
+          console.log(
+            "Using existing absensi header (created within 5 minutes):",
+            existing.id
+          );
+          return existing;
+        }
+      }
+
+      // Create new absensi header (allow multiple if different session/time)
+      const insertData = {
+        ...absensiData,
+        created_at: new Date().toISOString(),
       };
 
       const { data, error } = await supabase
         .from("absensi")
-        .insert([absensiData])
+        .insert([insertData])
         .select()
         .single();
 

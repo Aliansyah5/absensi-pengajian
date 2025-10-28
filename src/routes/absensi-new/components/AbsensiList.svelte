@@ -103,12 +103,30 @@
 	}
 
 	function getJamaahCount(item) {
-		// Count jamaah from dabsensi array (real attendance)
-		if (item.dabsensi && Array.isArray(item.dabsensi)) {
-			return item.dabsensi.length;
+		// Prioritas 1: Gunakan jamaah_count yang sudah dihitung dari service
+		if (typeof item.jamaah_count === 'number') {
+			console.log(`[AbsensiList] Absensi ID ${item.id}: ${item.jamaah_count} jamaah (dari jamaah_count)`);
+			return item.jamaah_count;
 		}
-		// Fallback to peserta field if dabsensi not available
-		return item.peserta || 0;
+
+		// Prioritas 2: Count dari dabsensi array jika tersedia
+		if (item.dabsensi && Array.isArray(item.dabsensi)) {
+			// Gunakan Set untuk menghitung unique id_siswa (dalam 1 form)
+			const uniqueJamaah = new Set();
+			item.dabsensi.forEach(d => {
+				if (d && d.id_siswa) {
+					uniqueJamaah.add(d.id_siswa);
+				}
+			});
+			const count = uniqueJamaah.size;
+			console.log(`[AbsensiList] Absensi ID ${item.id}: ${count} jamaah (dari dabsensi array)`);
+			return count;
+		}
+
+		// Prioritas 3: Fallback ke field peserta
+		const pesertaCount = parseInt(item.peserta) || 0;
+		console.log(`[AbsensiList] Absensi ID ${item.id}: ${pesertaCount} jamaah (dari field peserta)`);
+		return pesertaCount;
 	}
 
 	function toggleCard(id) {
