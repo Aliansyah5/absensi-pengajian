@@ -1,4 +1,4 @@
-const CACHE_NAME = "absensi-pengajian-v7"; // Updated version - increment for every deploy
+const CACHE_NAME = "absensi-pengajian-v8"; // Updated version - increment for every deploy
 const urlsToCache = [
   "/",
   "/login",

@@ -173,6 +173,10 @@ export class AbsensiService {
     //var today yyyy-mm-dd with momentjs
     const today = moment().format("YYYY-MM-DD");
 
+    // Get user's kelompok access
+    const userRole = await this.getUserRole();
+    const userKelompok = await this.getUserKelompok();
+
     let query = supabase
       .from("absensi")
       .select(
@@ -189,6 +193,11 @@ export class AbsensiService {
       .eq("active", 1)
       .order("id", { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
+
+    // Apply kelompok filter based on user access (unless super_admin)
+    if (userRole !== "super_admin" && userKelompok.length > 0) {
+      query = query.in("kelompok", userKelompok);
+    }
 
     // Apply filters
     if (filters.pengajian) query = query.eq("pengajian", filters.pengajian);
@@ -227,6 +236,10 @@ export class AbsensiService {
     //var today yyyy-mm-dd with momentjs
     const today = moment().format("YYYY-MM-DD");
 
+    // Get user's kelompok access
+    const userRole = await this.getUserRole();
+    const userKelompok = await this.getUserKelompok();
+
     let query = supabase
       .from("absensi")
       .select(
@@ -242,6 +255,11 @@ export class AbsensiService {
       .eq("active", 1)
       .eq("tgl", today)
       .order("id", { ascending: false });
+
+    // Apply kelompok filter based on user access (unless super_admin)
+    if (userRole !== "super_admin" && userKelompok.length > 0) {
+      query = query.in("kelompok", userKelompok);
+    }
 
     const { data, error } = await query;
     if (error) throw error;

@@ -296,6 +296,10 @@ export class DatabaseService {
         .from("mmasjid")
         .select("id, id_kelompok")
         .eq("active", 1);
+      let pengajianQuery = supabase
+        .from("absensi")
+        .select("id, kelompok")
+        .eq("active", 1);
 
       // Apply kelompok filter if user is not super_admin
       if (userRole !== "super_admin" && userKelompok.length > 0) {
@@ -306,14 +310,14 @@ export class DatabaseService {
         jamaahQuery = jamaahQuery.in("id_kelompok", userKelompok);
         kelompokQuery = kelompokQuery.in("id", userKelompok);
         masjidQuery = masjidQuery.in("id_kelompok", userKelompok);
+        pengajianQuery = pengajianQuery.in("kelompok", userKelompok);
       }
 
       // Get stats using manual queries
       const [jamaahResult, pengajianResult, kelompokResult, masjidResult] =
         await Promise.all([
           jamaahQuery,
-          // Pengajian tidak difilter berdasarkan kelompok
-          supabase.from("absensi").select("id").eq("active", 1),
+          pengajianQuery,
           kelompokQuery,
           masjidQuery,
         ]);
