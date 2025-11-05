@@ -128,6 +128,8 @@
 							type="time"
 							id="jam_mulai"
 							bind:value={currentFormData.jam_mulai}
+							step="60"
+							pattern="[0-9]{2}:[0-9]{2}"
 							required
 						/>
 					</div>
@@ -137,6 +139,8 @@
 							type="time"
 							id="jam_akhir"
 							bind:value={currentFormData.jam_akhir}
+							step="60"
+							pattern="[0-9]{2}:[0-9]{2}"
 							required
 						/>
 					</div>
@@ -451,8 +455,19 @@
 		appearance: none;
 	}
 
+	/* Remove AM/PM indicator */
+	.form-group input[type="time"]::-webkit-datetime-edit-ampm-field {
+		display: none;
+	}
+
 	.form-group input[type="time"]::-webkit-calendar-picker-indicator {
 		filter: invert(0.5);
+		cursor: pointer;
+	}
+
+	/* For Firefox */
+	.form-group input[type="time"]::-moz-datetime-edit-ampm-field {
+		display: none;
 	}
 
 	.field-hint {
@@ -579,6 +594,19 @@
 			width: 100%;
 			font-size: 16px;
 			padding: 0.875rem 1rem;
+			-webkit-appearance: none;
+			-moz-appearance: none;
+			appearance: none;
+		}
+
+		/* Ensure 24-hour format on mobile */
+		.form-group input[type="time"]::-webkit-datetime-edit-ampm-field {
+			display: none !important;
+		}
+
+		.form-group input[type="time"]::-webkit-datetime-edit-hour-field,
+		.form-group input[type="time"]::-webkit-datetime-edit-minute-field {
+			font-size: 16px;
 		}
 
 		.form-group input[type="date"] {
