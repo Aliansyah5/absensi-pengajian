@@ -436,6 +436,13 @@
 		gap: 1rem;
 	}
 
+	@media (max-width: 768px) {
+		.filters {
+			grid-template-columns: 1fr;
+			gap: 0.75rem;
+		}
+	}
+
 	.filter-group {
 		display: flex;
 		flex-direction: column;
@@ -802,10 +809,6 @@
 		.header-content {
 			flex-direction: column;
 			align-items: stretch;
-		}
-
-		.filters {
-			grid-template-columns: 1fr;
 		}
 
 		.table-section {

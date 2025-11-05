@@ -404,6 +404,14 @@
 		margin-bottom: 0;
 	}
 
+	/* Responsive Design */
+	@media (max-width: 768px) {
+		.form-row {
+			grid-template-columns: 1fr;
+			gap: 0.75rem;
+		}
+	}
+
 	.form-group {
 		display: flex;
 		flex-direction: column;
@@ -431,6 +439,11 @@
 		outline: none;
 		border-color: #3b82f6;
 		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+	}
+
+	/* Force 24-hour format on time inputs */
+	.form-group input[type="time"] {
+		font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 	}
 
 	.field-hint {
@@ -525,12 +538,14 @@
 			padding: 1rem;
 		}
 
-		.form-row {
-			grid-template-columns: 1fr;
-		}
-
 		.form-section {
 			padding: 1rem;
+		}
+
+		.btn-submit {
+			width: 100%;
+			padding: 0.875rem 1.5rem;
+			font-size: 0.95rem;
 		}
 	}
 </style>
