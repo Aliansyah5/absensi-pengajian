@@ -432,15 +432,8 @@
 
 	.filters {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
 		gap: 1rem;
-	}
-
-	@media (max-width: 768px) {
-		.filters {
-			grid-template-columns: 1fr;
-			gap: 0.75rem;
-		}
 	}
 
 	.filter-group {
@@ -455,20 +448,18 @@
 		color: #374151;
 	}
 
-	.filter-group input {
+	.filter-group input,
+	.filter-group select {
+		width: 100%;
 		padding: 0.75rem;
 		border: 2px solid #e5e7eb;
 		border-radius: 8px;
 		font-size: 0.875rem;
 		transition: all 0.2s ease;
+		box-sizing: border-box;
 	}
 
 	.filter-group select {
-		padding: 0.75rem;
-		border: 2px solid #e5e7eb;
-		border-radius: 8px;
-		font-size: 0.875rem;
-		transition: all 0.2s ease;
 		background: white;
 	}
 
@@ -809,6 +800,24 @@
 		.header-content {
 			flex-direction: column;
 			align-items: stretch;
+		}
+
+		.search-filter-section {
+			padding: 1rem;
+		}
+
+		.filters {
+			grid-template-columns: 1fr;
+			gap: 0.75rem;
+		}
+
+		.filter-group {
+			width: 100%;
+		}
+
+		.filter-group input,
+		.filter-group select {
+			width: 100%;
 		}
 
 		.table-section {

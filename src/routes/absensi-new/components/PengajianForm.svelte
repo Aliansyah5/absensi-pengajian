@@ -426,12 +426,14 @@
 
 	.form-group input,
 	.form-group select {
+		width: 100%;
 		padding: 0.75rem 1rem;
 		border: 2px solid #e5e7eb;
 		border-radius: 8px;
 		font-size: 0.875rem;
 		background: white;
 		transition: all 0.2s ease;
+		box-sizing: border-box;
 	}
 
 	.form-group input:focus,
@@ -441,9 +443,16 @@
 		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 	}
 
-	/* Force 24-hour format on time inputs */
+	/* Force 24-hour format on time inputs - works on most mobile browsers */
 	.form-group input[type="time"] {
 		font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+		-webkit-appearance: none;
+		-moz-appearance: none;
+		appearance: none;
+	}
+
+	.form-group input[type="time"]::-webkit-calendar-picker-indicator {
+		filter: invert(0.5);
 	}
 
 	.field-hint {
@@ -538,8 +547,44 @@
 			padding: 1rem;
 		}
 
+		.form-header {
+			margin-bottom: 1.5rem;
+		}
+
+		.form-header h2 {
+			font-size: 1.25rem;
+		}
+
 		.form-section {
 			padding: 1rem;
+			gap: 1.5rem;
+		}
+
+		.form-row {
+			grid-template-columns: 1fr;
+			gap: 0.75rem;
+		}
+
+		.form-group {
+			width: 100%;
+		}
+
+		.form-group input,
+		.form-group select {
+			width: 100%;
+			font-size: 16px; /* Prevents zoom on focus in iOS */
+		}
+
+		.form-group input[type="time"] {
+			width: 100%;
+			font-size: 16px;
+			padding: 0.875rem 1rem;
+		}
+
+		.form-group input[type="date"] {
+			width: 100%;
+			font-size: 16px;
+			padding: 0.875rem 1rem;
 		}
 
 		.btn-submit {
